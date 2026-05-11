@@ -27,20 +27,20 @@ const FLIGHT_CONFIG = {
 
 // Mapping of start times to image numbers (chronological) - corrected version
 const CHRONO_MAPPING = [
-    { t: 3, img: 1 }, { t: 10, img: 2 }, { t: 67, img: 4 }, { t: 86, img: 3 },
-    { t: 111, img: 5 }, { t: 130, img: 6 }, { t: 144, img: 7 }, { t: 154, img: 8 },
-    { t: 160, img: 11 }, { t: 189, img: 12 }, { t: 197, img: 13 }, { t: 206, img: 14 },
-    { t: 218, img: 15 }, { t: 235, img: 16 }, { t: 254, img: 17 }, { t: 297, img: 18 },
-    { t: 321, img: 19 }, { t: 354, img: 20 }, { t: 406, img: 9 }, { t: 437, img: 21 },
-    { t: 466, img: 10 }, { t: 484, img: 22 }, { t: 501, img: 23 }, { t: 511, img: 24 },
-    { t: 707, img: 31 }, { t: 730, img: 32 }, { t: 754, img: 33 }, { t: 808, img: 26 },
-    { t: 818, img: 25 }, { t: 868, img: 27 }, { t: 875, img: 30 }, { t: 894, img: 28 },
-    { t: 909, img: 29 }, { t: 921, img: 34 }, { t: 935, img: 35 }, { t: 944, img: 36 },
-    { t: 967, img: 37 }, { t: 987, img: 38 }, { t: 998, img: 39 }, { t: 1012, img: 40 },
-    { t: 1048, img: 41 }, { t: 1062, img: 42 }, { t: 1093, img: 43 }, { t: 1113, img: 44 },
-    { t: 1158, img: 45 }, { t: 1166, img: 46 }, { t: 1185, img: 47 }, { t: 1208, img: 48 },
-    { t: 1219, img: 49 }, { t: 1230, img: 50 }, { t: 1240, img: 51 }, { t: 1264, img: 52 },
-    { t: 1270, img: 53 }, { t: 1277, img: 54 }
+    { t: 3 }, { t: 10 }, { t: 67 }, { t: 86 },
+    { t: 111 }, { t: 130 }, { t: 144 }, { t: 154 },
+    { t: 160 }, { t: 189 }, { t: 197 }, { t: 206 },
+    { t: 218 }, { t: 235 }, { t: 254 }, { t: 297 },
+    { t: 321 }, { t: 354 }, { t: 406 }, { t: 437 },
+    { t: 466 }, { t: 484 }, { t: 501 }, { t: 511 },
+    { t: 707 }, { t: 730 }, { t: 754 }, { t: 808 },
+    { t: 818 }, { t: 868 }, { t: 875 }, { t: 894 },
+    { t: 909 }, { t: 921 }, { t: 935 }, { t: 944 },
+    { t: 967 }, { t: 987 }, { t: 998 }, { t: 1012 },
+    { t: 1048 }, { t: 1062 }, { t: 1093 }, { t: 1113 },
+    { t: 1158 }, { t: 1166 }, { t: 1185 }, { t: 1208 },
+    { t: 1219 }, { t: 1230 }, { t: 1240 }, { t: 1264 },
+    { t: 1270 }, { t: 1277 }
 ];
 
 // Timestamps for each image (seconds)
@@ -557,8 +557,8 @@ function createImageCircle() {
         const x = Math.cos(angle) * R;
         const z = Math.sin(angle) * R;
 
-        // Берем текстуру согласно хронологическому порядку из CHRONO_MAPPING
-        const textureIndex = CHRONO_MAPPING[i] ? CHRONO_MAPPING[i].img : (i + 1);
+        // Теперь просто берем картинки по порядку 1, 2, 3...
+        const textureIndex = i + 1;
         
         const material = new THREE.ShaderMaterial({
             uniforms: {
