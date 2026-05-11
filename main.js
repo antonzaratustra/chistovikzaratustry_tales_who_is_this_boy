@@ -10,7 +10,7 @@ import { MidiGenerator } from './music.js';
 const R = 16000;            
 const CAMERA_OFFSET = 0;    
 const IMAGE_SIZE = 1200;    
-const CENTER_IMAGE_SIZE = 3000;
+const CENTER_IMAGE_SIZE = 28000;
 const TOTAL_IMAGES = 54;
 
 // Настройки полета и визуала (для тестирования)
@@ -25,7 +25,7 @@ const FLIGHT_CONFIG = {
     ambientVolume: -10        // Громкость фона в дБ
 };
 
-// Mapping of start times to image numbers (chronological)
+// Mapping of start times to image numbers (chronological) - corrected version
 const CHRONO_MAPPING = [
     { t: 3, img: 1 }, { t: 10, img: 2 }, { t: 67, img: 4 }, { t: 86, img: 3 },
     { t: 111, img: 5 }, { t: 130, img: 6 }, { t: 144, img: 7 }, { t: 154, img: 8 },
@@ -38,9 +38,9 @@ const CHRONO_MAPPING = [
     { t: 909, img: 29 }, { t: 921, img: 34 }, { t: 935, img: 35 }, { t: 944, img: 36 },
     { t: 967, img: 37 }, { t: 987, img: 38 }, { t: 998, img: 39 }, { t: 1012, img: 40 },
     { t: 1048, img: 41 }, { t: 1062, img: 42 }, { t: 1093, img: 43 }, { t: 1113, img: 44 },
-    { t: 1158, img: 45 }, { t: 1166, img: 46 }, { t: 1185, img: 47 }, { t: 1200, img: 48 },
-    { t: 1200, img: 51 }, { t: 1219, img: 49 }, { t: 1264, img: 52 }, { t: 1270, img: 53 },
-    { t: 1277, img: 54 }, { t: 1284, img: 55 }
+    { t: 1158, img: 45 }, { t: 1166, img: 46 }, { t: 1185, img: 47 }, { t: 1208, img: 48 },
+    { t: 1219, img: 49 }, { t: 1230, img: 50 }, { t: 1240, img: 51 }, { t: 1264, img: 52 },
+    { t: 1270, img: 53 }, { t: 1277, img: 54 }
 ];
 
 // Timestamps for each image (seconds)
@@ -143,6 +143,8 @@ let centerPlane, finalPlane; // img_0 and img_55
 let starField;
 let arcLabels = [];
 let audio, midi;
+let finalTimeline;
+let isManualNavigation = false;
 let currentImageIndex = 0;
 let lastAccentIndex = -1;
 let isFinalSequence = false;
@@ -376,27 +378,78 @@ function createArcLabels() {
         "ARC VI — ВЕЧНОЕ ВОЗВРАЩЕНИЕ"
     ];
     
-    const labelRadius = 3200;
+    const labelRadius = 14000; // Внутри круга картинок (R=16000)
     
     labels.forEach((text, i) => {
-        const angle = (i / labels.length) * Math.PI * 2;
+        const startAngle = (i / labels.length) * Math.PI * 2 - Math.PI / 2;
         const div = document.createElement('div');
-        div.textContent = text;
-        div.style.cssText = `
-            color: rgba(255,255,255,0.6);
-            font-family: 'Courier New', monospace;
-            font-size: 11px;
-            letter-spacing: 3px;
-            text-transform: uppercase;
-            white-space: nowrap;
-            opacity: 0;
-            transition: opacity 1s;
-        `;
+        div.style.pointerEvents = 'none';
+        
+        // Создаем изогнутый текст по окружности с помощью SVG
+        const svgNS = "http://www.w3.org/2000/svg";
+        const svg = document.createElementNS(svgNS, "svg");
+        
+        // Размер SVG должен быть достаточным для дуги
+        const w = 8000; 
+        const h = 8000;
+        svg.setAttribute("width", w);
+        svg.setAttribute("height", h);
+        svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+        svg.style.overflow = "visible";
+        svg.style.position = "absolute";
+        svg.style.left = `-${w/2}px`;
+        svg.style.top = `-${h/2}px`;
+
+        const arcId = `arcPath${i}`;
+        const cx = w / 2;
+        const cy = h / 2;
+        const r = 3800; // Радиус изгиба самой надписи
+        
+        // Угол охвата одной надписи (примерно 50 градусов)
+        const sweepAngle = (Math.PI * 2) / labels.length * 0.9;
+        const angle1 = -sweepAngle / 2;
+        const angle2 = sweepAngle / 2;
+        
+        const x1 = cx + r * Math.cos(angle1);
+        const y1 = cy + r * Math.sin(angle1);
+        const x2 = cx + r * Math.cos(angle2);
+        const y2 = cy + r * Math.sin(angle2);
+
+        const path = document.createElementNS(svgNS, "path");
+        path.setAttribute("id", arcId);
+        path.setAttribute("fill", "none");
+        
+        // Рисуем дугу: M x1,y1 A r,r 0 0,1 x2,y2
+        path.setAttribute("d", `M ${x1},${y1} A ${r},${r} 0 0,1 ${x2},${y2}`);
+        
+        const textNode = document.createElementNS(svgNS, "text");
+        textNode.setAttribute("fill", "rgba(255,255,255,0.7)");
+        textNode.style.fontFamily = "'Courier New', monospace";
+        textNode.style.fontSize = "160px"; // Еще крупнее
+        textNode.style.letterSpacing = "15px";
+        textNode.style.textTransform = "uppercase";
+
+        const textPath = document.createElementNS(svgNS, "textPath");
+        textPath.setAttributeNS(null, "href", `#${arcId}`);
+        textPath.setAttribute("startOffset", "50%");
+        textPath.setAttribute("text-anchor", "middle");
+        textPath.textContent = text;
+
+        textNode.appendChild(textPath);
+        svg.appendChild(path);
+        svg.appendChild(textNode);
+        div.appendChild(svg);
+        
+        // Поворачиваем div так, чтобы текст смотрел "наружу" от центра
+        // Для 3D CSS2DObject это делается через позиционирование и ориентацию
+        // Но так как камера смотрит сверху, нам важно просто правильное вращение
+        div.style.transform = `rotate(${startAngle + Math.PI/2}rad)`;
+        
         const label = new CSS2DObject(div);
         label.position.set(
-            Math.cos(angle) * labelRadius,
+            Math.cos(startAngle) * labelRadius,
             0,
-            Math.sin(angle) * labelRadius
+            Math.sin(startAngle) * labelRadius
         );
         scene.add(label);
         arcLabels.push(div);
@@ -456,31 +509,53 @@ function startExperience() {
         
         // Переключение на финальную сцену для теста
         if (e.key.toLowerCase() === 'f') {
-            isFinalSequence = false; // Сброс флага для возможности повторного запуска
+            console.log("F key pressed - Force start final sequence");
+            isManualNavigation = true;
+            isFinalSequence = false; // Позволяем перезапуск
             currentImageIndex = TOTAL_IMAGES - 1;
             audio.currentTime = TIMESTAMPS[currentImageIndex];
-            startFinalSequence();
+            
+            // Мгновенно убиваем все текущие процессы
+            if (finalTimeline) finalTimeline.kill();
+            gsap.killTweensOf(camera.position);
+            gsap.killTweensOf(camera);
+            
+            jumpToImage(currentImageIndex);
+            
+            // Запускаем финал через минимальную задержку
+            setTimeout(() => {
+                isManualNavigation = false;
+                startFinalSequence();
+            }, 100);
         }
         
         // Переключение таймингов стрелками
         if (!isFreeCamera) {
             if (e.key === 'ArrowRight') {
                 if (currentImageIndex < TOTAL_IMAGES - 1) {
+                    isManualNavigation = true;
                     currentImageIndex++;
                     audio.currentTime = TIMESTAMPS[currentImageIndex];
+                    jumpToImage(currentImageIndex);
+                    
                     if (currentImageIndex === TOTAL_IMAGES - 1) {
-                        startFinalSequence();
-                    } else {
-                        jumpToImage(currentImageIndex);
+                        setTimeout(() => {
+                            if (currentImageIndex === TOTAL_IMAGES - 1) startFinalSequence();
+                        }, 1000);
                     }
+                    
+                    setTimeout(() => isManualNavigation = false, 500);
                 }
             }
             if (e.key === 'ArrowLeft') {
                 if (currentImageIndex > 0) {
+                    isManualNavigation = true;
                     currentImageIndex--;
-                    isFinalSequence = false; // Выход из финальной сцены при возврате
+                    isFinalSequence = false; 
+                    if (finalTimeline) finalTimeline.kill();
                     audio.currentTime = TIMESTAMPS[currentImageIndex];
                     jumpToImage(currentImageIndex);
+                    setTimeout(() => isManualNavigation = false, 500);
                 }
             }
         }
@@ -503,7 +578,7 @@ function startExperience() {
 }
 
 function onAudioTimeUpdate(e) {
-    if (isFinalSequence || isFreeCamera) return;
+    if (isFinalSequence || isFreeCamera || isManualNavigation) return;
     
     const t = e.target ? e.target.currentTime : audio.currentTime;
     
@@ -513,7 +588,6 @@ function onAudioTimeUpdate(e) {
             if (j !== lastAccentIndex) {
                 lastAccentIndex = j;
                 if (midi) {
-                    // Play accent on every 5th timestamp, motif on others
                     if (j % 5 === 0) {
                         midi.playAccent();
                     } else {
@@ -525,21 +599,26 @@ function onAudioTimeUpdate(e) {
         }
     }
 
+    // Ищем индекс кадра для текущего времени
+    let newIndex = -1;
     for (let i = TIMESTAMPS.length - 1; i >= 0; i--) {
         if (t >= TIMESTAMPS[i]) {
-            if (i !== currentImageIndex) {
-                currentImageIndex = i;
-                
-                if (i < TOTAL_IMAGES - 1) {
-                    const segmentDuration = TIMESTAMPS[i + 1] - TIMESTAMPS[i];
-                    transitionToImage(i, segmentDuration * 0.85);
-                } else {
-                    startFinalSequence();
-                }
-                updateVisibility(i);
-            }
+            newIndex = i;
             break;
         }
+    }
+
+    if (newIndex !== -1 && newIndex !== currentImageIndex) {
+        currentImageIndex = newIndex;
+        
+        if (currentImageIndex < TOTAL_IMAGES - 1) {
+            const segmentDuration = (TIMESTAMPS[currentImageIndex + 1] || t + 10) - TIMESTAMPS[currentImageIndex];
+            transitionToImage(currentImageIndex, segmentDuration * 0.85);
+        } else {
+            // Достигли последнего кадра
+            startFinalSequence();
+        }
+        updateVisibility(currentImageIndex);
     }
 }
 
@@ -559,12 +638,31 @@ function setCameraToImage(index) {
 }
 
 function jumpToImage(index) {
-    gsap.killTweensOf(camBasePos); // Остановить текущие анимации
+    // Остановить все текущие анимации камеры и объектов
+    if (finalTimeline) finalTimeline.kill();
+    gsap.killTweensOf(camera.position);
+    gsap.killTweensOf(camera);
+    gsap.killTweensOf(camBasePos);
+    
+    // Сброс интенсивностей (на случай если мы в середине перехода или финала)
+    imagePlanes.forEach((p, i) => {
+        gsap.killTweensOf(p.material.uniforms.uIntensity);
+        p.material.uniforms.uIntensity.value = 1.0;
+    });
+    gsap.killTweensOf(finalPlane.material.uniforms.uIntensity);
+    finalPlane.material.uniforms.uIntensity.value = 0.0;
+    gsap.killTweensOf(centerPlane.material.uniforms.uIntensity);
+    centerPlane.material.uniforms.uIntensity.value = 0.0;
+    
     setCameraToImage(index);
     updateVisibility(index);
 }
 
 function transitionToImage(targetIndex, duration) {
+    // Остановить текущие анимации, чтобы избежать конфликтов
+    gsap.killTweensOf(camera.position);
+    gsap.killTweensOf(camBasePos);
+
     // Текущий угол камеры
     const currentAngle = Math.atan2(camBasePos.z, camBasePos.x);
     // Целевой угол
@@ -631,21 +729,21 @@ function updateVisibility(currentIndex) {
 function startFinalSequence() {
     if (isFinalSequence) return;
     isFinalSequence = true;
-    console.log("Final sequence started: img_54 -> img_55 crossfade");
+    console.log("Final sequence started: Transitioning back to img_01 first");
     
     // Останавливаем все фоновые процессы дыхания камеры
+    if (finalTimeline) finalTimeline.kill();
     gsap.killTweensOf(camera.position);
     gsap.killTweensOf(camera.rotation);
     gsap.killTweensOf(camera);
     
-    const img54 = imagePlanes[53];
-    // Позиционируем img_55 точно поверх img_54 (последней картинки в круге)
-    finalPlane.position.copy(img54.position);
-    finalPlane.rotation.copy(img54.rotation);
+    const img01 = imagePlanes[0]; // Первая картинка
     
     // Сброс состояний материалов
+    imagePlanes.forEach(p => {
+        gsap.killTweensOf(p.material.uniforms.uIntensity);
+    });
     gsap.killTweensOf(finalPlane.material.uniforms.uIntensity);
-    gsap.killTweensOf(img54.material.uniforms.uIntensity);
     gsap.killTweensOf(centerPlane.material.uniforms.uIntensity);
     gsap.killTweensOf(starField.material);
     
@@ -657,54 +755,72 @@ function startFinalSequence() {
     // Убеждаемся, что все картинки видны
     imagePlanes.forEach(p => p.visible = true);
 
-    const tl = gsap.timeline();
+    finalTimeline = gsap.timeline();
     
-    // 1. Crossfade img_54 -> img_55 (соединение времен)
-    tl.to(img54.material.uniforms.uIntensity, { value: 0.0, duration: 5, ease: "power1.inOut" });
-    tl.to(finalPlane.material.uniforms.uIntensity, { value: 1.0, duration: 5, ease: "power1.inOut" }, "<");
+    // 1. Перелет от 54-й к 1-й картинке (замыкаем круг)
+    const angle01 = (0 / TOTAL_IMAGES) * Math.PI * 2 - Math.PI / 2;
+    const dist = (R - CAMERA_OFFSET) * FLIGHT_CONFIG.distanceMultiplier;
     
-    tl.to({}, { duration: 2 }); // Пауза на img_55
+    finalTimeline.to(camera.position, {
+        x: Math.cos(angle01) * dist,
+        y: FLIGHT_CONFIG.baseHeight,
+        z: Math.sin(angle01) * dist,
+        duration: 4,
+        ease: "power2.inOut",
+        onUpdate: () => {
+            camera.rotation.set(-Math.PI / 2, 0, 0);
+        }
+    });
+
+    // 2. Crossfade img_01 -> img_55 (соединение времен на 1-й картинке)
+    finalTimeline.add(() => {
+        console.log("Phase: Crossfading img_01 to img_55");
+        // Позиционируем img_55 точно поверх img_01
+        finalPlane.position.copy(img01.position);
+        finalPlane.rotation.copy(img01.rotation);
+        
+        gsap.to(img01.material.uniforms.uIntensity, { value: 0.0, duration: 5, ease: "power1.inOut" });
+        gsap.to(finalPlane.material.uniforms.uIntensity, { value: 1.0, duration: 5, ease: "power1.inOut" });
+    });
     
-    // 2. Взлет и отдаление к центру (Dolly Zoom)
-    tl.add(() => {
+    // ПАУЗА ДОЛЖНА БЫТЬ ВНУТРИ ТАЙМЛАЙНА
+    finalTimeline.to({}, { duration: 6 }); 
+    
+    // 3. Взлет и отдаление к центру (Dolly Zoom)
+    finalTimeline.add(() => {
         console.log("Phase: Moving to center, showing the circle");
         
-        // Камера летит в (0, 10000, 0) - высоко над центром
         gsap.to(camera.position, {
             x: 0,
-            y: 12000, // Чуть выше для лучшего обзора всего круга R=16000
+            y: 15000, 
             z: 0,
             duration: 18,
             ease: "power2.inOut",
             onUpdate: () => {
-                // Строгая ориентация вниз
                 camera.rotation.set(-Math.PI / 2, 0, 0);
             }
         });
         
-        // Расширение угла обзора
         gsap.to(camera, {
-            fov: 110,
+            fov: 120,
             duration: 18,
             ease: "power2.inOut",
             onUpdate: () => camera.updateProjectionMatrix()
         });
         
-        // Проявление звезд и центрального Уробороса (img_0)
         gsap.to(starField.material, { opacity: 1, duration: 12, delay: 3 });
         gsap.to(centerPlane.material.uniforms.uIntensity, { value: 1.0, duration: 10, delay: 6 });
         
-        // Проявление названий арок
         arcLabels.forEach((div, i) => {
             gsap.to(div, { opacity: 0.6, duration: 3, delay: 8 + i * 0.5 });
         });
     });
 
-    // 3. Финал: Приближение к красной точке (Центр)
-    tl.add(() => {
+    // 4. Финал: Приближение к красной точке (Центр)
+    finalTimeline.add(() => {
         console.log("Phase: Approaching the Red Dot");
         
-        // Постепенно скрываем всё остальное
+        // Исчезновение всего лишнего
         gsap.to(centerPlane.material.uniforms.uIntensity, { value: 0, duration: 6 });
         gsap.to(finalPlane.material.uniforms.uIntensity, { value: 0, duration: 6 });
         imagePlanes.forEach(p => {
@@ -713,34 +829,33 @@ function startFinalSequence() {
         arcLabels.forEach(div => gsap.to(div, { opacity: 0, duration: 3 }));
 
         // Красная точка (Light/Point)
-        const dotGeo = new THREE.SphereGeometry(15, 32, 32);
+        const dotGeo = new THREE.SphereGeometry(30, 32, 32);
         const dotMat = new THREE.MeshBasicMaterial({ color: 0xCC2200, transparent: true, opacity: 0 });
         const redDot = new THREE.Mesh(dotGeo, dotMat);
         scene.add(redDot);
         
         // Проявляем точку
         gsap.to(redDot.material, { opacity: 1, duration: 5 });
-        gsap.to(redDot.scale, { x: 2, y: 2, z: 2, duration: 5 }); // Начальный масштаб
+        gsap.to(redDot.scale, { x: 2, y: 2, z: 2, duration: 5 }); 
         
         // Схлопывание звезд
-        gsap.to(starField.scale, { x: 0.001, y: 0.001, z: 0.001, duration: 20, ease: "power3.in" });
+        gsap.to(starField.scale, { x: 0.001, y: 0.001, z: 0.001, duration: 25, ease: "power3.in" });
         
         // Камера медленно погружается в точку
         gsap.to(camera.position, {
             y: 50,
-            duration: 30,
+            duration: 35,
             ease: "none",
             onUpdate: () => {
                 camera.rotation.set(-Math.PI / 2, 0, 0);
-                // Точка пульсирует и растет по мере приближения
-                const s = 2 + Math.sin(Date.now() * 0.005) * 0.5;
+                const s = 2 + Math.sin(Date.now() * 0.005) * 1.5;
                 redDot.scale.set(s, s, s);
             }
         });
         
         // Финальное затемнение экрана
-        gsap.to("#fade-overlay", { opacity: 1, duration: 8, delay: 22 });
-    }, "+=15");
+        gsap.to("#fade-overlay", { opacity: 1, duration: 10, delay: 25 });
+    }, "+=18");
 }
 
 function animate(time) {
