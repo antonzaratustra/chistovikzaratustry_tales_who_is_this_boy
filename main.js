@@ -25,12 +25,26 @@ const FLIGHT_CONFIG = {
     ambientVolume: -10        // Громкость фона в дБ
 };
 
-// Timestamps for each image (seconds) - updated to cover full narration (sorted chronologically)
-const TIMESTAMPS = [
-    3, 10, 67, 86, 111, 130, 144, 154, 160, 189, 197, 206, 218, 235, 254, 297, 321, 354, 406, 437,
-    466, 484, 501, 511, 707, 730, 754, 808, 818, 868, 875, 894, 909, 921, 935, 944, 967, 987, 998, 1012,
-    1048, 1062, 1093, 1113, 1158, 1166, 1185, 1200, 1208, 1219, 1264, 1270, 1277, 1284
+// Mapping of start times to image numbers (chronological)
+const CHRONO_MAPPING = [
+    { t: 3, img: 1 }, { t: 10, img: 2 }, { t: 67, img: 4 }, { t: 86, img: 3 },
+    { t: 111, img: 5 }, { t: 130, img: 6 }, { t: 144, img: 7 }, { t: 154, img: 8 },
+    { t: 160, img: 11 }, { t: 189, img: 12 }, { t: 197, img: 13 }, { t: 206, img: 14 },
+    { t: 218, img: 15 }, { t: 235, img: 16 }, { t: 254, img: 17 }, { t: 297, img: 18 },
+    { t: 321, img: 19 }, { t: 354, img: 20 }, { t: 406, img: 9 }, { t: 437, img: 21 },
+    { t: 466, img: 10 }, { t: 484, img: 22 }, { t: 501, img: 23 }, { t: 511, img: 24 },
+    { t: 707, img: 31 }, { t: 730, img: 32 }, { t: 754, img: 33 }, { t: 808, img: 26 },
+    { t: 818, img: 25 }, { t: 868, img: 27 }, { t: 875, img: 30 }, { t: 894, img: 28 },
+    { t: 909, img: 29 }, { t: 921, img: 34 }, { t: 935, img: 35 }, { t: 944, img: 36 },
+    { t: 967, img: 37 }, { t: 987, img: 38 }, { t: 998, img: 39 }, { t: 1012, img: 40 },
+    { t: 1048, img: 41 }, { t: 1062, img: 42 }, { t: 1093, img: 43 }, { t: 1113, img: 44 },
+    { t: 1158, img: 45 }, { t: 1166, img: 46 }, { t: 1185, img: 47 }, { t: 1200, img: 48 },
+    { t: 1200, img: 51 }, { t: 1219, img: 49 }, { t: 1264, img: 52 }, { t: 1270, img: 53 },
+    { t: 1277, img: 54 }, { t: 1284, img: 55 }
 ];
+
+// Timestamps for each image (seconds)
+const TIMESTAMPS = CHRONO_MAPPING.map(m => m.t);
 
 // All narration timestamps for music accents (from transcription.md)
 const ACCENT_TIMESTAMPS = [
@@ -254,9 +268,12 @@ function createImageCircle() {
         const x = Math.cos(angle) * R;
         const z = Math.sin(angle) * R;
 
+        // Берем текстуру согласно хронологическому порядку из CHRONO_MAPPING
+        const textureIndex = CHRONO_MAPPING[i] ? CHRONO_MAPPING[i].img : (i + 1);
+        
         const material = new THREE.ShaderMaterial({
             uniforms: {
-                uTexture: { value: textures[i + 1] || null },
+                uTexture: { value: textures[textureIndex] || null },
                 uTime: { value: 0 },
                 uSeed: { value: Math.random() * 100 },
                 uIntensity: { value: 1.0 },
@@ -614,15 +631,19 @@ function updateVisibility(currentIndex) {
 function startFinalSequence() {
     if (isFinalSequence) return;
     isFinalSequence = true;
-    console.log("Final sequence started");
+    console.log("Final sequence started: img_54 -> img_55 crossfade");
+    
+    // Останавливаем все фоновые процессы дыхания камеры
+    gsap.killTweensOf(camera.position);
+    gsap.killTweensOf(camera.rotation);
+    gsap.killTweensOf(camera);
     
     const img54 = imagePlanes[53];
+    // Позиционируем img_55 точно поверх img_54 (последней картинки в круге)
     finalPlane.position.copy(img54.position);
     finalPlane.rotation.copy(img54.rotation);
     
-    // Сброс состояний для возможности повторного теста
-    gsap.killTweensOf(camera.position);
-    gsap.killTweensOf(camera);
+    // Сброс состояний материалов
     gsap.killTweensOf(finalPlane.material.uniforms.uIntensity);
     gsap.killTweensOf(img54.material.uniforms.uIntensity);
     gsap.killTweensOf(centerPlane.material.uniforms.uIntensity);
@@ -632,76 +653,94 @@ function startFinalSequence() {
     centerPlane.material.uniforms.uIntensity.value = 0.0;
     starField.material.opacity = 0;
     starField.scale.set(1, 1, 1);
-    camera.fov = 60;
-    camera.updateProjectionMatrix();
+    
+    // Убеждаемся, что все картинки видны
+    imagePlanes.forEach(p => p.visible = true);
 
     const tl = gsap.timeline();
     
-    // 7.1 Phase A: img_55 reveal (crossfade with img_54)
-    tl.to(img54.material.uniforms.uIntensity, { value: 0.0, duration: 4, ease: "sine.inOut" });
-    tl.to(finalPlane.material.uniforms.uIntensity, { value: 1.0, duration: 4, ease: "sine.inOut" }, "<");
+    // 1. Crossfade img_54 -> img_55 (соединение времен)
+    tl.to(img54.material.uniforms.uIntensity, { value: 0.0, duration: 5, ease: "power1.inOut" });
+    tl.to(finalPlane.material.uniforms.uIntensity, { value: 1.0, duration: 5, ease: "power1.inOut" }, "<");
     
-    tl.addPause("+=2");
+    tl.to({}, { duration: 2 }); // Пауза на img_55
     
-    // 7.2 & 7.3 Phase B & C: Dolly Zoom + Center Image + Stars
+    // 2. Взлет и отдаление к центру (Dolly Zoom)
     tl.add(() => {
-        console.log("Dolly Zoom phase started");
-        // Dolly Zoom: Камера летит к центру, но FOV расширяется
+        console.log("Phase: Moving to center, showing the circle");
+        
+        // Камера летит в (0, 10000, 0) - высоко над центром
         gsap.to(camera.position, {
-            x: 0, y: 1000, z: 0, // Позиция над центром
-            duration: 12,
+            x: 0,
+            y: 12000, // Чуть выше для лучшего обзора всего круга R=16000
+            z: 0,
+            duration: 18,
             ease: "power2.inOut",
             onUpdate: () => {
-                camera.lookAt(0, 0, 0);
+                // Строгая ориентация вниз
+                camera.rotation.set(-Math.PI / 2, 0, 0);
             }
         });
         
+        // Расширение угла обзора
         gsap.to(camera, {
-            fov: 100, // Расширение угла обзора
-            duration: 12,
+            fov: 110,
+            duration: 18,
             ease: "power2.inOut",
             onUpdate: () => camera.updateProjectionMatrix()
         });
         
-        // Center Image Fade In
-        gsap.to(centerPlane.material.uniforms.uIntensity, { value: 1.0, duration: 6, delay: 2 });
+        // Проявление звезд и центрального Уробороса (img_0)
+        gsap.to(starField.material, { opacity: 1, duration: 12, delay: 3 });
+        gsap.to(centerPlane.material.uniforms.uIntensity, { value: 1.0, duration: 10, delay: 6 });
         
-        // StarField Fade In
-        gsap.to(starField.material, { opacity: 1, duration: 8 });
-        
-        // Arc Labels
+        // Проявление названий арок
         arcLabels.forEach((div, i) => {
-            gsap.to(div, { opacity: 0.6, duration: 2, delay: 4 + i * 0.5 });
+            gsap.to(div, { opacity: 0.6, duration: 3, delay: 8 + i * 0.5 });
         });
     });
 
-    // 7.4 Phase D: Red Dot & Fade to Black
+    // 3. Финал: Приближение к красной точке (Центр)
     tl.add(() => {
-        console.log("Final fade phase started");
-        // img_0 fade out
-        gsap.to(centerPlane.material.uniforms.uIntensity, { value: 0, duration: 4, delay: 15 });
+        console.log("Phase: Approaching the Red Dot");
         
-        // Stars movement (implosion)
-        gsap.to(starField.scale, { x: 0.001, y: 0.001, z: 0.001, duration: 15, delay: 15, ease: "power2.in" });
-        
-        // Labels fade out
-        arcLabels.forEach(div => gsap.to(div, { opacity: 0, duration: 2, delay: 15 }));
-        
-        // Red Dot logic (existing or new)
-        const dotGeo = new THREE.SphereGeometry(5, 32, 32);
+        // Постепенно скрываем всё остальное
+        gsap.to(centerPlane.material.uniforms.uIntensity, { value: 0, duration: 6 });
+        gsap.to(finalPlane.material.uniforms.uIntensity, { value: 0, duration: 6 });
+        imagePlanes.forEach(p => {
+            gsap.to(p.material.uniforms.uIntensity, { value: 0, duration: 6 });
+        });
+        arcLabels.forEach(div => gsap.to(div, { opacity: 0, duration: 3 }));
+
+        // Красная точка (Light/Point)
+        const dotGeo = new THREE.SphereGeometry(15, 32, 32);
         const dotMat = new THREE.MeshBasicMaterial({ color: 0xCC2200, transparent: true, opacity: 0 });
         const redDot = new THREE.Mesh(dotGeo, dotMat);
         scene.add(redDot);
         
-        gsap.to(redDot.material, { opacity: 1, duration: 3, delay: 18 });
-        gsap.to(redDot.scale, { x: 10, y: 10, z: 10, duration: 3, delay: 18 });
+        // Проявляем точку
+        gsap.to(redDot.material, { opacity: 1, duration: 5 });
+        gsap.to(redDot.scale, { x: 2, y: 2, z: 2, duration: 5 }); // Начальный масштаб
         
-        // Camera slow move to dot
-        gsap.to(camera.position, { y: 100, duration: 20, delay: 18, ease: "none" });
+        // Схлопывание звезд
+        gsap.to(starField.scale, { x: 0.001, y: 0.001, z: 0.001, duration: 20, ease: "power3.in" });
         
-        // Final fade to black
-        gsap.to("#fade-overlay", { opacity: 1, duration: 5, delay: 35 });
-    }, "+=10");
+        // Камера медленно погружается в точку
+        gsap.to(camera.position, {
+            y: 50,
+            duration: 30,
+            ease: "none",
+            onUpdate: () => {
+                camera.rotation.set(-Math.PI / 2, 0, 0);
+                // Точка пульсирует и растет по мере приближения
+                const s = 2 + Math.sin(Date.now() * 0.005) * 0.5;
+                redDot.scale.set(s, s, s);
+            }
+        });
+        
+        // Финальное затемнение экрана
+        gsap.to("#fade-overlay", { opacity: 1, duration: 8, delay: 22 });
+    }, "+=15");
 }
 
 function animate(time) {
