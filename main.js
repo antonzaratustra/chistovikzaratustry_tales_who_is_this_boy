@@ -144,6 +144,8 @@ let starField;
 let audio, midi;
 let finalTimeline;
 let isManualNavigation = false;
+let isIntroActive = false;
+let introTimeouts = [];
 let currentImageIndex = 0;
 let lastAccentIndex = -1;
 let isFinalSequence = false;
@@ -398,8 +400,32 @@ function setupAudio() {
 function startExperience() {
     console.log("startExperience triggered");
     try {
-        document.getElementById('start-screen').style.opacity = '0';
-        setTimeout(() => document.getElementById('start-screen').remove(), 1000);
+        isIntroActive = true;
+        const startLabel = document.getElementById('start-label');
+        const loader = document.getElementById('loader');
+        const startScreen = document.getElementById('start-screen');
+        
+        // Плавно гасим только надписи, оставляя черный экран
+        gsap.to([startLabel, loader], { 
+            opacity: 0, 
+            duration: 2.0, 
+            ease: "power2.inOut",
+            onComplete: () => {
+                // После того как надписи исчезли, ждем еще секунду в темноте
+                const introTimeout = setTimeout(() => {
+                    if (!isIntroActive) return;
+                    
+                    // Убираем черный оверлей и запускаем интро
+                    startScreen.remove();
+                    
+                    runIntroSequence().then(() => {
+                        if (!isIntroActive) return;
+                        finishIntroAndStartAudio();
+                    });
+                }, 1000);
+                introTimeouts.push(introTimeout);
+            }
+        });
         
         // Initialize MIDI
         midi = new MidiGenerator({
@@ -411,88 +437,167 @@ function startExperience() {
         // При старте принудительно включаем кинематографический режим
         isFreeCamera = false;
         controls.enabled = false;
-        setCameraToImage(0);
-        updateVisibility(0);
         
-        console.log("Starting cinematic experience.");
-        
-        window.addEventListener('keydown', (e) => {
-            if (e.key.toLowerCase() === 'c') {
-                isFreeCamera = !isFreeCamera;
-                controls.enabled = isFreeCamera;
+        // Скрываем все картинки перед интро
+        imagePlanes.forEach(p => p.visible = false);
+
+        window.addEventListener('keydown', handleKeyDown);
+
+    } catch (error) {
+        console.error("Critical error in startExperience:", error);
+    }
+}
+
+async function runIntroSequence() {
+    console.log("Phase: Intro Rewind (54 -> 1)");
+    
+    // Позиционируем интро-плейн там же, где будет первая картинка
+    const img01 = imagePlanes[0];
+    rewindPlane.position.copy(img01.position);
+    rewindPlane.rotation.copy(img01.rotation);
+    rewindPlane.scale.set(1, 1, 1);
+    rewindPlane.visible = true;
+    
+    // Камера сразу на первую позицию
+    setCameraToImage(0);
+    camera.position.y = 2000; // Начинаем чуть выше для эффекта снижения
+    
+    const introImages = [...textures].slice(1, 55).reverse(); // 54 down to 1
+    const stepDuration = 0.05;
+
+    gsap.to(rewindPlane.material.uniforms.uIntensity, { value: 1.0, duration: 0.5 });
+    gsap.to(camera.position, { y: FLIGHT_CONFIG.baseHeight, duration: introImages.length * stepDuration, ease: "power1.inOut" });
+
+    return new Promise(resolve => {
+        introImages.forEach((tex, i) => {
+            const timeout = setTimeout(() => {
+                if (!isIntroActive) return;
+                rewindPlane.material.uniforms.uTexture.value = tex;
+                rewindPlane.material.uniforms.uTime.value = performance.now() * 0.001;
                 
-                if (!isFreeCamera) {
-                    setCameraToImage(currentImageIndex);
-                    updateVisibility(currentImageIndex);
+                if (i === introImages.length - 1) {
+                    resolve();
                 }
-                console.log("Camera mode:", isFreeCamera ? "FREE" : "CINEMATIC");
-            }
-        
-        // Переключение на финальную сцену для теста
-        if (e.key.toLowerCase() === 'f') {
-            console.log("F key pressed - Force start full final loop");
-            isManualNavigation = true;
-            isFinalSequence = false; 
-            currentImageIndex = TOTAL_IMAGES - 1;
-            audio.currentTime = TIMESTAMPS[currentImageIndex];
-            
-            if (finalTimeline) finalTimeline.kill();
-            gsap.killTweensOf(camera.position);
-            gsap.killTweensOf(camera);
-            
-            jumpToImage(currentImageIndex);
-            
-            setTimeout(() => {
-                isManualNavigation = false;
-                startFinalSequence(false); // false = запуск с перелета 54->01
-            }, 100);
-        }
-        
-        // Переключение таймингов стрелками
-        if (!isFreeCamera) {
-            if (e.key === 'ArrowRight') {
-                if (currentImageIndex < TOTAL_IMAGES - 1) {
-                    isManualNavigation = true;
-                    currentImageIndex++;
-                    audio.currentTime = TIMESTAMPS[currentImageIndex];
-                    jumpToImage(currentImageIndex);
-                    
-                    if (currentImageIndex === TOTAL_IMAGES - 1) {
-                        setTimeout(() => {
-                            if (currentImageIndex === TOTAL_IMAGES - 1) startFinalSequence();
-                        }, 1000);
-                    }
-                    
-                    setTimeout(() => isManualNavigation = false, 500);
-                }
-            }
-            if (e.key === 'ArrowLeft') {
-                if (currentImageIndex > 0) {
-                    isManualNavigation = true;
-                    currentImageIndex--;
-                    isFinalSequence = false; 
-                    if (finalTimeline) finalTimeline.kill();
-                    audio.currentTime = TIMESTAMPS[currentImageIndex];
-                    jumpToImage(currentImageIndex);
-                    setTimeout(() => isManualNavigation = false, 500);
-                }
-            }
+            }, i * stepDuration * 1000);
+            introTimeouts.push(timeout);
+        });
+    });
+}
+
+function finishIntroAndStartAudio() {
+    if (!isIntroActive) return;
+    isIntroActive = false;
+    console.log("Intro finished, starting narration");
+
+    // Показываем основной плейн первой картинки
+    updateVisibility(0);
+    const img01 = imagePlanes[0];
+    img01.material.uniforms.uIntensity.value = 1.0;
+
+    // Плавно убираем интро-плейн, оставляя под ним настоящую первую картинку
+    gsap.to(rewindPlane.material.uniforms.uIntensity, { 
+        value: 0, 
+        duration: 0.3, 
+        onComplete: () => {
+            rewindPlane.visible = false;
         }
     });
 
-        audio.play().then(() => {
-            console.log("Audio playing successfully");
-        }).catch(err => {
-            console.error("Audio playback failed. Please ensure assets/audio/narration.mp3 exists.", err);
-            // Fallback: start a manual timer if audio fails
-            let currentTime = 0;
-            setInterval(() => {
-                currentTime += 0.1;
-                onAudioTimeUpdate({ target: { currentTime } });
-            }, 100);
-        });
-    } catch (error) {
-        console.error("Critical error in startExperience:", error);
+    audio.play().then(() => {
+        console.log("Audio playing successfully");
+    }).catch(err => {
+        console.error("Audio playback failed.", err);
+        startFallbackTimer();
+    });
+}
+
+function startFallbackTimer() {
+    let currentTime = 0;
+    const timer = setInterval(() => {
+        currentTime += 0.1;
+        onAudioTimeUpdate({ target: { currentTime } });
+    }, 100);
+}
+
+function interruptIntro() {
+    if (!isIntroActive) return;
+    console.log("Interrupting intro sequence");
+    isIntroActive = false;
+    introTimeouts.forEach(t => clearTimeout(t));
+    introTimeouts = [];
+    rewindPlane.visible = false;
+    rewindPlane.material.uniforms.uIntensity.value = 0;
+}
+
+function handleKeyDown(e) {
+    if (e.key.toLowerCase() === 'c') {
+        interruptIntro();
+        isFreeCamera = !isFreeCamera;
+        controls.enabled = isFreeCamera;
+        
+        if (!isFreeCamera) {
+            setCameraToImage(currentImageIndex);
+            updateVisibility(currentImageIndex);
+        }
+        console.log("Camera mode:", isFreeCamera ? "FREE" : "CINEMATIC");
+    }
+
+    // Переключение на финальную сцену для теста
+    if (e.key.toLowerCase() === 'f') {
+        console.log("F key pressed - Force start full final loop");
+        interruptIntro();
+        isManualNavigation = true;
+        isFinalSequence = false; 
+        currentImageIndex = TOTAL_IMAGES - 1;
+        audio.currentTime = TIMESTAMPS[currentImageIndex];
+        
+        if (finalTimeline) finalTimeline.kill();
+        gsap.killTweensOf(camera.position);
+        gsap.killTweensOf(camera);
+        
+        jumpToImage(currentImageIndex);
+        
+        if (audio.paused) audio.play();
+
+        setTimeout(() => {
+            isManualNavigation = false;
+            startFinalSequence(false);
+        }, 100);
+    }
+
+    // Переключение таймингов стрелками
+    if (!isFreeCamera) {
+        if (e.key === 'ArrowRight') {
+            interruptIntro();
+            if (currentImageIndex < TOTAL_IMAGES - 1) {
+                isManualNavigation = true;
+                currentImageIndex++;
+                audio.currentTime = TIMESTAMPS[currentImageIndex];
+                if (audio.paused) audio.play();
+                jumpToImage(currentImageIndex);
+                
+                if (currentImageIndex === TOTAL_IMAGES - 1) {
+                    setTimeout(() => {
+                        if (currentImageIndex === TOTAL_IMAGES - 1) startFinalSequence();
+                    }, 1000);
+                }
+                
+                setTimeout(() => isManualNavigation = false, 500);
+            }
+        }
+        if (e.key === 'ArrowLeft') {
+            interruptIntro();
+            if (currentImageIndex > 0) {
+                isManualNavigation = true;
+                currentImageIndex--;
+                isFinalSequence = false; 
+                if (finalTimeline) finalTimeline.kill();
+                audio.currentTime = TIMESTAMPS[currentImageIndex];
+                if (audio.paused) audio.play();
+                jumpToImage(currentImageIndex);
+                setTimeout(() => isManualNavigation = false, 500);
+            }
+        }
     }
 }
 
