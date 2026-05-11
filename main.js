@@ -8,17 +8,18 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 // --- CONFIGURATION ---
 const R = 16000;            
 const CAMERA_OFFSET = 0;    
-const CAMERA_HEIGHT = 1500; 
 const IMAGE_SIZE = 1200;    
 const CENTER_IMAGE_SIZE = 3000;
 const TOTAL_IMAGES = 54;
 
-// Настройки полета (для тестирования)
+// Настройки полета и визуала (для тестирования)
 const FLIGHT_CONFIG = {
-    heightMultiplier: 1.2,    // Во сколько раз поднимаемся в середине полета
+    baseHeight: 1300,         // Изначальное расстояние до картинок (высота)
+    heightMultiplier: 1.8,    // Во сколько раз поднимаемся в середине полета
     distanceMultiplier: 1.0,  // Множитель радиуса (1.0 = строго по кругу)
     breathingAmp: 8,          // Амплитуда дыхания
-    breathingSpeed: 0.8       // Скорость дыхания
+    breathingSpeed: 0.8,      // Скорость дыхания
+    blackThreshold: 0.05      // Порог отсечения черного (0.0 - 1.0)
 };
 
 // Timestamps for each image (seconds)
@@ -47,6 +48,7 @@ uniform sampler2D uTexture;
 uniform float uTime;
 uniform float uSeed;
 uniform float uIntensity;
+uniform float uBlackThreshold;
 
 varying vec2 vUv;
 
@@ -91,7 +93,15 @@ void main() {
     float finalAlpha = noisyEdge + brush * (1.0 - noisyEdge);
     finalAlpha = clamp(finalAlpha, 0.0, 1.0);
     finalAlpha *= uIntensity;
+    
     vec4 texColor = texture2D(uTexture, vUv);
+    
+    // Отсечение черного фона картинки
+    float luminance = dot(texColor.rgb, vec3(0.299, 0.587, 0.114));
+    if (luminance < uBlackThreshold) {
+        finalAlpha = 0.0;
+    }
+    
     gl_FragColor = vec4(texColor.rgb, texColor.a * finalAlpha);
 }
 `;
@@ -117,7 +127,7 @@ async function init() {
     try {
         // 1. Scene Setup
         scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x050505);
+        scene.background = new THREE.Color(0x000000); // Возвращаем абсолютно черный
 
         camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 10, 30000);
         
@@ -232,7 +242,8 @@ function createImageCircle() {
                 uTexture: { value: textures[i + 1] || null },
                 uTime: { value: 0 },
                 uSeed: { value: Math.random() * 100 },
-                uIntensity: { value: 1.0 }
+                uIntensity: { value: 1.0 },
+                uBlackThreshold: { value: FLIGHT_CONFIG.blackThreshold }
             },
             vertexShader: VERT_SHADER,
             fragmentShader: FRAG_SHADER,
@@ -259,7 +270,8 @@ function createCenterImages() {
             uTexture: { value: textures[0] || null },
             uTime: { value: 0 },
             uSeed: { value: Math.random() * 100 },
-            uIntensity: { value: 0.0 }
+            uIntensity: { value: 0.0 },
+            uBlackThreshold: { value: FLIGHT_CONFIG.blackThreshold }
         },
         vertexShader: VERT_SHADER,
         fragmentShader: FRAG_SHADER,
@@ -279,7 +291,8 @@ function createCenterImages() {
             uTexture: { value: textures[55] || null },
             uTime: { value: 0 },
             uSeed: { value: Math.random() * 100 },
-            uIntensity: { value: 0.0 }
+            uIntensity: { value: 0.0 },
+            uBlackThreshold: { value: FLIGHT_CONFIG.blackThreshold }
         },
         vertexShader: VERT_SHADER,
         fragmentShader: FRAG_SHADER,
@@ -456,7 +469,7 @@ function setCameraToImage(index) {
     const dist = (R - CAMERA_OFFSET) * FLIGHT_CONFIG.distanceMultiplier;
     camBasePos.set(
         Math.cos(angle) * dist,
-        CAMERA_HEIGHT,
+        FLIGHT_CONFIG.baseHeight,
         Math.sin(angle) * dist
     );
     camera.position.copy(camBasePos);
@@ -484,7 +497,7 @@ function transitionToImage(targetIndex, duration) {
 
     const animObj = { 
         angle: currentAngle, 
-        height: CAMERA_HEIGHT,
+        height: FLIGHT_CONFIG.baseHeight,
         distScale: FLIGHT_CONFIG.distanceMultiplier
     };
     
@@ -493,7 +506,7 @@ function transitionToImage(targetIndex, duration) {
     // Движение строго по дуге над окружностью
     tl.to(animObj, {
         angle: targetAngle,
-        height: CAMERA_HEIGHT * FLIGHT_CONFIG.heightMultiplier, 
+        height: FLIGHT_CONFIG.baseHeight * FLIGHT_CONFIG.heightMultiplier, 
         duration: duration * 0.5,
         ease: "power2.inOut",
         onUpdate: () => {
@@ -502,7 +515,7 @@ function transitionToImage(targetIndex, duration) {
     });
     
     tl.to(animObj, {
-        height: CAMERA_HEIGHT,
+        height: FLIGHT_CONFIG.baseHeight,
         duration: duration * 0.5,
         ease: "power2.inOut",
         onUpdate: () => {
