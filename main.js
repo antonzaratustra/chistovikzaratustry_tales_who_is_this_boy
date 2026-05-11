@@ -4,6 +4,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { MidiGenerator } from './music.js';
 
 // --- CONFIGURATION ---
 const R = 16000;            
@@ -19,18 +20,18 @@ const FLIGHT_CONFIG = {
     distanceMultiplier: 1.0,  // Множитель радиуса (1.0 = строго по кругу)
     breathingAmp: 8,          // Амплитуда дыхания
     breathingSpeed: 0.8,      // Скорость дыхания
-    blackThreshold: 0.05      // Порог отсечения черного (0.0 - 1.0)
+    blackThreshold: 0.05,     // Порог отсечения черного (0.0 - 1.0)
+    musicVolume: -10,         // Громкость музыки в дБ (-60 до 0)
+    ambientVolume: -10        // Громкость фона в дБ
 };
 
-// Timestamps for each image (seconds)
-const TIMESTAMPS = [
-    0.0, 10.0, 20.0, 33.0, 47.0, 71.0, 94.0, 120.0, 160.0, 206.0,
-    232.0, 265.0, 309.0, 377.0, 415.0, 475.0, 507.0, 548.0, 590.0, 651.0,
-    697.0, 760.0, 808.0, 851.0, 912.0, 960.0, 1006.0, 1060.0, 1107.0, 1160.0,
-    1207.0, 1250.0, 1314.0, 1366.0, 1421.0, 1486.0, 1540.0, 1607.0, 1660.0, 1720.0,
-    1780.0, 1851.0, 1920.0, 1988.0, 2050.0, 2120.0, 2190.0, 2260.0, 2320.0, 2400.0,
-    2460.0, 2520.0, 2580.0, 2640.0
+// All narration timestamps for music accents
+const ACCENT_TIMESTAMPS = [
+    3, 10, 14, 20, 27, 33, 40, 48, 59, 67, 73, 86, 93, 100, 104, 111, 117, 125, 130, 135, 144, 147, 154, 160, 163, 173, 181, 189, 197, 206, 210, 214, 218, 222, 224, 228, 235, 239, 245, 254, 261, 270, 277, 281, 289, 293, 297, 303, 308, 315, 321, 328, 338, 343, 348, 354, 361, 367, 371, 376, 380, 382, 389, 392, 395, 406, 410, 416, 420, 430, 434, 437, 440, 446, 452, 454, 457, 466, 469, 473, 476, 479, 481, 484, 486, 488, 493, 498, 501, 503, 505, 511, 515, 522, 523, 529, 531, 534, 538, 541, 546, 551, 554, 557, 566, 571, 575, 579, 581, 586, 588, 589, 597, 599, 613, 618, 621, 625, 627, 634, 638, 642, 648, 651, 656, 659, 662, 667, 673, 678, 687, 690, 700, 703, 707, 708, 714, 723, 725, 730, 732, 733, 738, 740, 745, 749, 754, 756, 766, 767, 774, 780, 781, 793, 799, 801, 806, 808, 811, 818, 824, 828, 834, 838, 842, 846, 848, 852, 856, 857, 860, 863, 866, 868, 875, 878, 881, 885, 886, 894, 900, 904, 909, 912, 918, 921, 924, 929, 933, 935, 940, 944, 947, 952, 956, 960, 962, 967, 971, 974, 978, 984, 987, 991, 998, 1002, 1007, 1012, 1017, 1021, 1024, 1028, 1032, 1037, 1038, 1041, 1043, 1048, 1053, 1058, 1062, 1064, 1069, 1073, 1078, 1082, 1087, 1093, 1096, 1100, 1106, 1113, 1116, 1123, 1124, 1130, 1134, 1138, 1141, 1144, 1147, 1151, 1155, 1161, 1166, 1169, 1174, 1177, 1180, 1185, 1188, 1191, 1194, 1195, 1199, 1200, 1208, 1212, 1216, 1219, 1222, 1225, 1228, 1233, 1238, 1240, 1244, 1249, 1253, 1258, 1260, 1264, 1268, 1272, 1275, 1279, 1284
 ];
+
+// Timestamps for each image (seconds) - derived to cover full narration
+const TIMESTAMPS = ACCENT_TIMESTAMPS.filter((_, i) => i % Math.floor(ACCENT_TIMESTAMPS.length / TOTAL_IMAGES) === 0).slice(0, TOTAL_IMAGES);
 
 // --- SHADERS ---
 const VERT_SHADER = `
@@ -123,8 +124,9 @@ let imagePlanes = [];
 let centerPlane, finalPlane; // img_0 and img_55
 let starField;
 let arcLabels = [];
-let audio;
+let audio, midi;
 let currentImageIndex = 0;
+let lastAccentIndex = -1;
 let isFinalSequence = false;
 let isFreeCamera = true; // Включаем свободную камеру по умолчанию для осмотра
 let textures = [];
@@ -389,67 +391,81 @@ function setupAudio() {
 }
 
 function startExperience() {
-    document.getElementById('start-screen').style.opacity = '0';
-    setTimeout(() => document.getElementById('start-screen').remove(), 1000);
-    
-    // Показываем подсказку по камере
-    document.getElementById('camera-hint').style.display = 'block';
-    
-    // При старте принудительно включаем кинематографический режим
-    isFreeCamera = false;
-    controls.enabled = false;
-    setCameraToImage(0);
-    updateVisibility(0);
-    
-    console.log("Starting cinematic experience. Press 'C' to toggle free camera.");
-    
-    window.addEventListener('keydown', (e) => {
-        if (e.key.toLowerCase() === 'c') {
-            isFreeCamera = !isFreeCamera;
-            controls.enabled = isFreeCamera;
-            
-            const hint = document.getElementById('camera-hint');
-            if (isFreeCamera) {
-                hint.textContent = "Клавиша 'C' — режим притчи";
-                hint.style.color = "rgba(255, 100, 100, 0.5)";
-            } else {
-                hint.textContent = "Клавиша 'C' — свободная камера";
-                hint.style.color = "rgba(255, 255, 255, 0.3)";
-                // Возвращаем камеру на позицию текущей картинки
-                setCameraToImage(currentImageIndex);
-                updateVisibility(currentImageIndex);
-            }
-            console.log("Camera mode:", isFreeCamera ? "FREE" : "CINEMATIC");
-        }
+    console.log("startExperience triggered");
+    try {
+        document.getElementById('start-screen').style.opacity = '0';
+        setTimeout(() => document.getElementById('start-screen').remove(), 1000);
         
-        // Переключение таймингов стрелками
-        if (!isFreeCamera) {
-            if (e.key === 'ArrowRight') {
-                if (currentImageIndex < TOTAL_IMAGES - 1) {
-                    currentImageIndex++;
-                    audio.currentTime = TIMESTAMPS[currentImageIndex];
-                    jumpToImage(currentImageIndex);
-                }
-            }
-            if (e.key === 'ArrowLeft') {
-                if (currentImageIndex > 0) {
-                    currentImageIndex--;
-                    audio.currentTime = TIMESTAMPS[currentImageIndex];
-                    jumpToImage(currentImageIndex);
-                }
-            }
-        }
-    });
+        // Initialize MIDI
+        midi = new MidiGenerator({
+            musicVolume: FLIGHT_CONFIG.musicVolume,
+            ambientVolume: FLIGHT_CONFIG.ambientVolume
+        });
+        midi.init().catch(err => console.warn("MIDI init failed, continuing without music:", err));
 
-    audio.play().catch(err => {
-        console.error("Audio playback failed. Please ensure assets/audio/narration.mp3 exists.", err);
-        // Fallback: start a manual timer if audio fails
-        let currentTime = 0;
-        setInterval(() => {
-            currentTime += 0.1;
-            onAudioTimeUpdate({ target: { currentTime } });
-        }, 100);
-    });
+        // Показываем подсказку по камере
+        document.getElementById('camera-hint').style.display = 'block';
+        
+        // При старте принудительно включаем кинематографический режим
+        isFreeCamera = false;
+        controls.enabled = false;
+        setCameraToImage(0);
+        updateVisibility(0);
+        
+        console.log("Starting cinematic experience. Press 'C' to toggle free camera.");
+        
+        window.addEventListener('keydown', (e) => {
+            if (e.key.toLowerCase() === 'c') {
+                isFreeCamera = !isFreeCamera;
+                controls.enabled = isFreeCamera;
+                
+                const hint = document.getElementById('camera-hint');
+                if (isFreeCamera) {
+                    hint.textContent = "Клавиша 'C' — режим притчи";
+                    hint.style.color = "rgba(255, 100, 100, 0.5)";
+                } else {
+                    hint.textContent = "Клавиша 'C' — свободная камера";
+                    hint.style.color = "rgba(255, 255, 255, 0.3)";
+                    // Возвращаем камеру на позицию текущей картинки
+                    setCameraToImage(currentImageIndex);
+                    updateVisibility(currentImageIndex);
+                }
+                console.log("Camera mode:", isFreeCamera ? "FREE" : "CINEMATIC");
+            }
+            
+            // Переключение таймингов стрелками
+            if (!isFreeCamera) {
+                if (e.key === 'ArrowRight') {
+                    if (currentImageIndex < TOTAL_IMAGES - 1) {
+                        currentImageIndex++;
+                        audio.currentTime = TIMESTAMPS[currentImageIndex];
+                        jumpToImage(currentImageIndex);
+                    }
+                }
+                if (e.key === 'ArrowLeft') {
+                    if (currentImageIndex > 0) {
+                        currentImageIndex--;
+                        audio.currentTime = TIMESTAMPS[currentImageIndex];
+                        jumpToImage(currentImageIndex);
+                    }
+                }
+            }
+        });
+
+        audio.play().then(() => {
+            console.log("Audio playing successfully");
+        }).catch(err => {
+            console.error("Audio playback failed. Please ensure assets/audio/narration.mp3 exists.", err);
+            // Fallback: start a manual timer if audio fails
+            let currentTime = 0;
+            setInterval(() => {
+                currentTime += 0.1;
+                onAudioTimeUpdate({ target: { currentTime } });
+            }, 100);
+        });
+    } catch (error) {
+        console.error("Critical error in startExperience:", error);
+    }
 }
 
 function onAudioTimeUpdate(e) {
@@ -457,6 +473,24 @@ function onAudioTimeUpdate(e) {
     
     const t = e.target ? e.target.currentTime : audio.currentTime;
     
+    // Trigger MIDI accents/motifs
+    for (let j = ACCENT_TIMESTAMPS.length - 1; j >= 0; j--) {
+        if (t >= ACCENT_TIMESTAMPS[j]) {
+            if (j !== lastAccentIndex) {
+                lastAccentIndex = j;
+                if (midi) {
+                    // Play accent on every 5th timestamp, motif on others
+                    if (j % 5 === 0) {
+                        midi.playAccent();
+                    } else {
+                        midi.playMotif();
+                    }
+                }
+            }
+            break;
+        }
+    }
+
     for (let i = TIMESTAMPS.length - 1; i >= 0; i--) {
         if (t >= TIMESTAMPS[i]) {
             if (i !== currentImageIndex) {
