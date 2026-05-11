@@ -1032,6 +1032,7 @@ function setCameraToImage(index) {
 function jumpToImage(index) {
     // Остановить все текущие анимации камеры и объектов
     if (finalTimeline) finalTimeline.kill();
+    if (navTimeline) navTimeline.kill();
     gsap.killTweensOf(camera.position);
     gsap.killTweensOf(camera);
     gsap.killTweensOf(camBasePos);
@@ -1046,17 +1047,36 @@ function jumpToImage(index) {
     gsap.killTweensOf(centerPlane.material.uniforms.uIntensity);
     centerPlane.material.uniforms.uIntensity.value = 0.0;
     
-    setCameraToImage(index);
+    // Плавный прыжок вместо мгновенного, если мы не в интро
+    const angle = (index / TOTAL_IMAGES) * Math.PI * 2 - Math.PI / 2;
+    const dist = (R - CAMERA_OFFSET) * FLIGHT_CONFIG.distanceMultiplier;
+    const targetX = Math.cos(angle) * dist;
+    const targetZ = Math.sin(angle) * dist;
+
+    navTimeline = gsap.timeline();
+    navTimeline.to(camera.position, {
+        x: targetX,
+        y: FLIGHT_CONFIG.baseHeight,
+        z: targetZ,
+        duration: 0.8, // Достаточно быстро, но плавно
+        ease: "power2.out",
+        onUpdate: () => {
+            camBasePos.copy(camera.position);
+            camera.rotation.set(-Math.PI / 2, 0, 0);
+        }
+    });
+    
     updateVisibility(index);
 }
 
 function transitionToImage(targetIndex, duration) {
     // Остановить текущие анимации, чтобы избежать конфликтов
+    if (navTimeline) navTimeline.kill();
     gsap.killTweensOf(camera.position);
     gsap.killTweensOf(camBasePos);
 
     // Текущий угол камеры
-    const currentAngle = Math.atan2(camBasePos.z, camBasePos.x);
+    const currentAngle = Math.atan2(camera.position.z, camera.position.x);
     // Целевой угол
     let targetAngle = (targetIndex / TOTAL_IMAGES) * Math.PI * 2 - Math.PI / 2;
     
@@ -1066,14 +1086,14 @@ function transitionToImage(targetIndex, duration) {
 
     const animObj = { 
         angle: currentAngle, 
-        height: FLIGHT_CONFIG.baseHeight,
+        height: camera.position.y,
         distScale: FLIGHT_CONFIG.distanceMultiplier
     };
     
-    const tl = gsap.timeline();
+    navTimeline = gsap.timeline();
     
     // Движение строго по дуге над окружностью
-    tl.to(animObj, {
+    navTimeline.to(animObj, {
         angle: targetAngle,
         height: FLIGHT_CONFIG.baseHeight * FLIGHT_CONFIG.heightMultiplier, 
         duration: duration * 0.5,
@@ -1083,7 +1103,7 @@ function transitionToImage(targetIndex, duration) {
         }
     });
     
-    tl.to(animObj, {
+    navTimeline.to(animObj, {
         height: FLIGHT_CONFIG.baseHeight,
         duration: duration * 0.5,
         ease: "power2.inOut",
@@ -1159,7 +1179,7 @@ function startFinalSequence(skipInitial = false) {
     finalTimeline = gsap.timeline();
     
     if (!skipInitial) {
-        // 1. Перелет от 54-й к 1-й картинке
+        // 1. ПЛАВНЫЙ перелет от текущей позиции к 1-й картинке (индекс 0)
         const angle01 = (0 / TOTAL_IMAGES) * Math.PI * 2 - Math.PI / 2;
         const dist = (R - CAMERA_OFFSET) * FLIGHT_CONFIG.distanceMultiplier;
         
@@ -1167,7 +1187,7 @@ function startFinalSequence(skipInitial = false) {
             x: Math.cos(angle01) * dist,
             y: FLIGHT_CONFIG.baseHeight,
             z: Math.sin(angle01) * dist,
-            duration: 4,
+            duration: 5, // Увеличил длительность для плавности
             ease: "power2.inOut",
             onUpdate: () => camera.rotation.set(-Math.PI / 2, 0, 0)
         });
@@ -1175,6 +1195,7 @@ function startFinalSequence(skipInitial = false) {
         // 2. Crossfade img_01 -> img_55
         finalTimeline.add(() => {
             console.log("Phase: Crossfading img_01 to img_55");
+            const img01 = imagePlanes[0];
             finalPlane.position.copy(img01.position);
             finalPlane.rotation.copy(img01.rotation);
             gsap.to(img01.material.uniforms.uIntensity, { value: 0.0, duration: 5, ease: "power1.inOut" });
@@ -1184,15 +1205,17 @@ function startFinalSequence(skipInitial = false) {
         finalTimeline.to({}, { duration: 6 }); 
     }
 
-    // 3. Взлет и отдаление к центру (Dolly Zoom)
+    // 3. Взлет и отдаление СТРОГО К ЦЕНТРУ (0, 0, 0)
     finalTimeline.add(() => {
-        console.log("Phase: Moving to center, showing the circle and labels");
+        console.log("Phase: Moving to absolute center, showing the circle");
         
         gsap.to(camera.position, {
-            x: 0, y: 15000, z: 0,
+            x: 0, y: 15000, z: 0, // Цель — центр
             duration: 18,
             ease: "power2.inOut",
-            onUpdate: () => camera.rotation.set(-Math.PI / 2, 0, 0)
+            onUpdate: () => {
+                camera.rotation.set(-Math.PI / 2, 0, 0); // Взгляд строго вниз
+            }
         });
         
         gsap.to(camera, {
