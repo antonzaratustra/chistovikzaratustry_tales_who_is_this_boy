@@ -552,13 +552,23 @@ async function preloadTextures() {
 function createImageCircle() {
     const geometry = new THREE.PlaneGeometry(IMAGE_SIZE, IMAGE_SIZE);
 
+    const imageMap = {
+        45: 47, // "Танец" -> "Колесо"
+        47: 45, // "Колесо" -> "Танец"
+        49: 50, // "Уроборос" -> "Лестницы"
+        50: 49  // "Лестницы" -> "Уроборос"
+    };
+
     for (let i = 0; i < TOTAL_IMAGES; i++) {
         const angle = (i / TOTAL_IMAGES) * Math.PI * 2 - Math.PI / 2; // Смещение на полночь
         const x = Math.cos(angle) * R;
         const z = Math.sin(angle) * R;
 
-        // Теперь просто берем картинки по порядку 1, 2, 3...
-        const textureIndex = i + 1;
+        // Переопределяем индекс картинки согласно маппингу
+        let textureIndex = i + 1;
+        if (imageMap[textureIndex]) {
+            textureIndex = imageMap[textureIndex];
+        }
         
         const material = new THREE.ShaderMaterial({
             uniforms: {
