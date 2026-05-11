@@ -429,10 +429,14 @@ const NARRATION_TEXT = [
     { t: 1260, text: "Оно повторяется," },
     { t: 1264, text: "и это твоя задумка." },
     { t: 1268, text: "В этом и была вся фишка." },
-    { t: 1272, text: "И ты уже не смеешься" },
-    { t: 1275, text: "и не грустишь," },
-    { t: 1279, text: "не психуешь," },
-    { t: 1284, text: "не недодумываешь," }
+    { t: 1258, text: "И ты уже не смеешься" },
+    { t: 1260, text: "и не грустишь," },
+    { t: 1264, text: "не психуешь," },
+    { t: 1268, text: "не недодумываешь," },
+    { t: 1272, text: "не думаешь о том," },
+    { t: 1275, text: "чтобы владеть чем-то," },
+    { t: 1279, text: "чтобы контролировать что-то," },
+    { t: 1284, text: "а начинаешь просто создавать." }
 ];
 
 // Base camera position for breathing
@@ -833,9 +837,10 @@ function handleKeyDown(e) {
         isFinalSequence = false; 
         currentImageIndex = TOTAL_IMAGES - 1;
         audio.currentTime = TIMESTAMPS[currentImageIndex];
-        updateSubtitles(audio.currentTime); // Update text immediately
+        updateSubtitles(audio.currentTime, true); // МГНОВЕННОЕ ОБНОВЛЕНИЕ
         
         if (finalTimeline) finalTimeline.kill();
+        if (navTimeline) navTimeline.kill();
         gsap.killTweensOf(camera.position);
         gsap.killTweensOf(camera);
         
@@ -859,7 +864,7 @@ function handleKeyDown(e) {
                 currentImageIndex++;
                 console.log("Moving to index:", currentImageIndex, "Time:", TIMESTAMPS[currentImageIndex]);
                 audio.currentTime = TIMESTAMPS[currentImageIndex];
-                updateSubtitles(audio.currentTime); 
+                updateSubtitles(audio.currentTime, true); // МГНОВЕННОЕ ОБНОВЛЕНИЕ
                 if (audio.paused) audio.play();
                 
                 jumpToImage(currentImageIndex);
@@ -887,11 +892,12 @@ function handleKeyDown(e) {
                 console.log("Moving back to index:", currentImageIndex, "Time:", TIMESTAMPS[currentImageIndex]);
                 isFinalSequence = false; 
                 if (finalTimeline) finalTimeline.kill();
+                if (navTimeline) navTimeline.kill();
                 audio.currentTime = TIMESTAMPS[currentImageIndex];
-                updateSubtitles(audio.currentTime); // Update text
+                updateSubtitles(audio.currentTime, true); // МГНОВЕННОЕ ОБНОВЛЕНИЕ
                 if (audio.paused) audio.play();
                 jumpToImage(currentImageIndex);
-                setTimeout(() => isManualNavigation = false, 500);
+                setTimeout(() => isManualNavigation = false, 300);
             } else {
                 console.log("Already at first image");
             }
@@ -900,13 +906,15 @@ function handleKeyDown(e) {
 }
 
 function onAudioTimeUpdate(e) {
-    if (isFinalSequence || isFreeCamera || isManualNavigation) return;
-    
     const t = e.target ? e.target.currentTime : audio.currentTime;
     
-    // Update Subtitles
-    updateSubtitles(t);
+    // ОБНОВЛЯЕМ СУБТИТРЫ ВСЕГДА (даже в финале, пока они не скрыты)
+    if (!isFreeCamera && !isManualNavigation) {
+        updateSubtitles(t);
+    }
 
+    if (isFinalSequence || isFreeCamera || isManualNavigation) return;
+    
     // Trigger MIDI accents/motifs
     for (let j = ACCENT_TIMESTAMPS.length - 1; j >= 0; j--) {
         if (t >= ACCENT_TIMESTAMPS[j]) {
@@ -956,7 +964,13 @@ function onAudioTimeUpdate(e) {
     }
 }
 
-function updateSubtitles(t) {
+function updateSubtitles(t, isJump = false) {
+    // Если субтитры уже скрыты в финале, больше не обновляем их
+    const container = document.getElementById('subtitle-container');
+    if (!isJump && container && window.getComputedStyle(container).opacity === "0" && isFinalSequence) {
+        return;
+    }
+
     let newIndex = -1;
     for (let i = NARRATION_TEXT.length - 1; i >= 0; i--) {
         if (t >= NARRATION_TEXT[i].t) {
@@ -973,43 +987,64 @@ function updateSubtitles(t) {
             currentSubtitle = newText;
             const container = document.getElementById('subtitle-container');
             
+            // Остановка предыдущих анимаций текста
+            gsap.killTweensOf(container);
+            
             // Находим время до следующей фразы для расчета скорости
             const nextT = NARRATION_TEXT[newIndex + 1] ? NARRATION_TEXT[newIndex + 1].t : t + 5;
             const availableDuration = Math.max(nextT - entry.t, 1.0); // Время жизни фразы
-            
-            // Рассчитываем длительность печати: не дольше 80% времени до следующей фразы,
-            // но и не слишком долго (макс 5 секунд для очень длинных пауз)
             const totalPrintDuration = Math.min(availableDuration * 0.8, 5.0); 
-            
-            gsap.to(container, { 
-                opacity: 0, 
-                duration: 0.2, 
-                onComplete: () => {
-                    container.innerHTML = "";
-                    if (newText) {
-                        const chars = newText.split("");
-                        chars.forEach(char => {
-                            const span = document.createElement("span");
-                            span.className = "char";
-                            // Используем неразрывный пробел, чтобы inline-block имел ширину
-                            span.textContent = char === " " ? "\u00A0" : char; 
-                            container.appendChild(span);
-                        });
-                        
-                        const charElements = container.querySelectorAll(".char");
-                        const stagger = totalPrintDuration / chars.length;
-                        
-                        container.style.opacity = 1;
-                        gsap.to(charElements, {
-                            opacity: 1,
-                            y: 0,
-                            duration: 0.1,
-                            stagger: stagger,
-                            ease: "none"
-                        });
-                    }
+
+            const setInstantText = () => {
+                container.innerHTML = "";
+                if (newText) {
+                    const chars = newText.split("");
+                    chars.forEach(char => {
+                        const span = document.createElement("span");
+                        span.className = "char";
+                        span.textContent = char === " " ? "\u00A0" : char; 
+                        span.style.opacity = 1;
+                        span.style.transform = "translateY(0)";
+                        container.appendChild(span);
+                    });
+                    container.style.opacity = 1;
                 }
-            });
+            };
+
+            if (isJump) {
+                // При прыжке — мгновенно меняем текст без затуханий
+                setInstantText();
+            } else {
+                // При обычном проигрывании — плавно через typewriter
+                gsap.to(container, { 
+                    opacity: 0, 
+                    duration: 0.2, 
+                    onComplete: () => {
+                        container.innerHTML = "";
+                        if (newText) {
+                            const chars = newText.split("");
+                            chars.forEach(char => {
+                                const span = document.createElement("span");
+                                span.className = "char";
+                                span.textContent = char === " " ? "\u00A0" : char; 
+                                container.appendChild(span);
+                            });
+                            
+                            const charElements = container.querySelectorAll(".char");
+                            const stagger = totalPrintDuration / chars.length;
+                            
+                            container.style.opacity = 1;
+                            gsap.to(charElements, {
+                                opacity: 1,
+                                y: 0,
+                                duration: 0.1,
+                                stagger: stagger,
+                                ease: "none"
+                            });
+                        }
+                    }
+                });
+            }
         }
     }
 }
