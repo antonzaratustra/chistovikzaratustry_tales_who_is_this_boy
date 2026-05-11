@@ -378,34 +378,30 @@ function createArcLabels() {
         "ARC VI — ВЕЧНОЕ ВОЗВРАЩЕНИЕ"
     ];
     
-    const labelRadius = 14000; // Внутри круга картинок (R=16000)
+    const labelRadius = 10000; // Глубже внутрь круга, чтобы не мешать при облете картинок (R=16000)
     
     labels.forEach((text, i) => {
         const startAngle = (i / labels.length) * Math.PI * 2 - Math.PI / 2;
         const div = document.createElement('div');
         div.style.pointerEvents = 'none';
+        div.style.display = 'none'; // Полностью скрываем до финала
+        div.style.opacity = "0";
         
-        // Создаем изогнутый текст по окружности с помощью SVG
         const svgNS = "http://www.w3.org/2000/svg";
         const svg = document.createElementNS(svgNS, "svg");
         
-        // Размер SVG должен быть достаточным для дуги
-        const w = 8000; 
-        const h = 8000;
+        const w = 4000; 
+        const h = 2000;
         svg.setAttribute("width", w);
         svg.setAttribute("height", h);
         svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
         svg.style.overflow = "visible";
-        svg.style.position = "absolute";
-        svg.style.left = `-${w/2}px`;
-        svg.style.top = `-${h/2}px`;
 
         const arcId = `arcPath${i}`;
         const cx = w / 2;
         const cy = h / 2;
-        const r = 3800; // Радиус изгиба самой надписи
+        const r = 3000; // Радиус изгиба текста
         
-        // Угол охвата одной надписи (примерно 50 градусов)
         const sweepAngle = (Math.PI * 2) / labels.length * 0.9;
         const angle1 = -sweepAngle / 2;
         const angle2 = sweepAngle / 2;
@@ -418,15 +414,13 @@ function createArcLabels() {
         const path = document.createElementNS(svgNS, "path");
         path.setAttribute("id", arcId);
         path.setAttribute("fill", "none");
-        
-        // Рисуем дугу: M x1,y1 A r,r 0 0,1 x2,y2
         path.setAttribute("d", `M ${x1},${y1} A ${r},${r} 0 0,1 ${x2},${y2}`);
         
         const textNode = document.createElementNS(svgNS, "text");
-        textNode.setAttribute("fill", "rgba(255,255,255,0.7)");
+        textNode.setAttribute("fill", "rgba(255,255,255,0.8)");
         textNode.style.fontFamily = "'Courier New', monospace";
-        textNode.style.fontSize = "160px"; // Еще крупнее
-        textNode.style.letterSpacing = "15px";
+        textNode.style.fontSize = "140px"; 
+        textNode.style.letterSpacing = "12px";
         textNode.style.textTransform = "uppercase";
 
         const textPath = document.createElementNS(svgNS, "textPath");
@@ -440,10 +434,8 @@ function createArcLabels() {
         svg.appendChild(textNode);
         div.appendChild(svg);
         
-        // Поворачиваем div так, чтобы текст смотрел "наружу" от центра
-        // Для 3D CSS2DObject это делается через позиционирование и ориентацию
-        // Но так как камера смотрит сверху, нам важно просто правильное вращение
-        div.style.transform = `rotate(${startAngle + Math.PI/2}rad)`;
+        // Поворачиваем надпись, чтобы она была выровнена по радиусу
+        div.style.transform = `translate(-50%, -50%) rotate(${startAngle + Math.PI/2}rad)`;
         
         const label = new CSS2DObject(div);
         label.position.set(
@@ -811,7 +803,9 @@ function startFinalSequence() {
         gsap.to(starField.material, { opacity: 1, duration: 12, delay: 3 });
         gsap.to(centerPlane.material.uniforms.uIntensity, { value: 1.0, duration: 10, delay: 6 });
         
+        // Проявление названий арок (включаем видимость и плавно повышаем opacity)
         arcLabels.forEach((div, i) => {
+            div.style.display = 'block';
             gsap.to(div, { opacity: 0.6, duration: 3, delay: 8 + i * 0.5 });
         });
     });
@@ -826,7 +820,13 @@ function startFinalSequence() {
         imagePlanes.forEach(p => {
             gsap.to(p.material.uniforms.uIntensity, { value: 0, duration: 6 });
         });
-        arcLabels.forEach(div => gsap.to(div, { opacity: 0, duration: 3 }));
+        arcLabels.forEach(div => {
+            gsap.to(div, { 
+                opacity: 0, 
+                duration: 3,
+                onComplete: () => div.style.display = 'none'
+            });
+        });
 
         // Красная точка (Light/Point)
         const dotGeo = new THREE.SphereGeometry(30, 32, 32);
