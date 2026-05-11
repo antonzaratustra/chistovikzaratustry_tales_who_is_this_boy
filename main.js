@@ -14,8 +14,8 @@ const TOTAL_IMAGES = 54;
 
 // Настройки полета и визуала (для тестирования)
 const FLIGHT_CONFIG = {
-    baseHeight: 1300,         // Изначальное расстояние до картинок (высота)
-    heightMultiplier: 1.8,    // Во сколько раз поднимаемся в середине полета
+    baseHeight: 1000,         // Изначальное расстояние до картинок (высота)
+    heightMultiplier: 1.2,    // Во сколько раз поднимаемся в середине полета
     distanceMultiplier: 1.0,  // Множитель радиуса (1.0 = строго по кругу)
     breathingAmp: 8,          // Амплитуда дыхания
     breathingSpeed: 0.8,      // Скорость дыхания
@@ -83,26 +83,37 @@ float fbm(vec2 p) {
 void main() {
     vec2 center = vUv - 0.5;
     float dist = length(center);
-    float t = uTime * 0.4 + uSeed * 17.3;
-    vec2 noiseUv = vUv * 2.5 + vec2(t * 0.1, t * 0.07);
-    float n = fbm(noiseUv);
-    float edgeFactor = smoothstep(0.25, 0.5, dist);
-    float noisyEdge = smoothstep(0.0, 1.0, 1.0 - dist * 2.0 + n * 0.6 * edgeFactor);
-    float brushAngle = atan(center.y, center.x);
-    float brush = fbm(vec2(brushAngle * 2.0 + uSeed, t * 0.2)) * 0.3;
-    float finalAlpha = noisyEdge + brush * (1.0 - noisyEdge);
+    
+    // Эффект дымки на краях
+    float t = uTime * 0.6 + uSeed * 25.0; 
+    
+    // Несколько слоев шума для "дымчатости"
+    vec2 noiseUv1 = vUv * 3.0 + vec2(t * 0.15, t * 0.1);
+    vec2 noiseUv2 = vUv * 6.0 - vec2(t * 0.1, t * 0.2);
+    float n = (fbm(noiseUv1) + fbm(noiseUv2) * 0.5) / 1.5;
+    
+    // Создаем рваную маску края
+    // Начинаем размытие чуть дальше от центра
+    float edgeMask = smoothstep(0.5, 0.3, dist + n * 0.25); 
+    
+    // Дополнительный эффект "плавающих" мазков
+    float angle = atan(center.y, center.x);
+    float wave = sin(angle * 5.0 + t) * 0.05;
+    float finalAlpha = smoothstep(0.5, 0.2, dist + n * 0.3 + wave);
+    
     finalAlpha = clamp(finalAlpha, 0.0, 1.0);
     finalAlpha *= uIntensity;
     
     vec4 texColor = texture2D(uTexture, vUv);
     
-    // Отсечение черного фона картинки
+    // Мягкое отсечение черного фона (не такое резкое)
     float luminance = dot(texColor.rgb, vec3(0.299, 0.587, 0.114));
-    if (luminance < uBlackThreshold) {
-        finalAlpha = 0.0;
-    }
+    float lumMask = smoothstep(uBlackThreshold, uBlackThreshold + 0.1, luminance);
     
-    gl_FragColor = vec4(texColor.rgb, texColor.a * finalAlpha);
+    // Итоговая прозрачность — пересечение маски края и маски яркости
+    float alpha = texColor.a * finalAlpha * lumMask;
+    
+    gl_FragColor = vec4(texColor.rgb, alpha);
 }
 `;
 
