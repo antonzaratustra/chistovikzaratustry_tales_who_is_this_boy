@@ -25,13 +25,17 @@ const FLIGHT_CONFIG = {
     ambientVolume: -10        // Громкость фона в дБ
 };
 
-// All narration timestamps for music accents
+// Timestamps for each image (seconds) - updated to cover full narration (sorted chronologically)
+const TIMESTAMPS = [
+    3, 10, 67, 86, 111, 130, 144, 154, 160, 189, 197, 206, 218, 235, 254, 297, 321, 354, 406, 437,
+    466, 484, 501, 511, 707, 730, 754, 808, 818, 868, 875, 894, 909, 921, 935, 944, 967, 987, 998, 1012,
+    1048, 1062, 1093, 1113, 1158, 1166, 1185, 1200, 1208, 1219, 1264, 1270, 1277, 1284
+];
+
+// All narration timestamps for music accents (from transcription.md)
 const ACCENT_TIMESTAMPS = [
     3, 10, 14, 20, 27, 33, 40, 48, 59, 67, 73, 86, 93, 100, 104, 111, 117, 125, 130, 135, 144, 147, 154, 160, 163, 173, 181, 189, 197, 206, 210, 214, 218, 222, 224, 228, 235, 239, 245, 254, 261, 270, 277, 281, 289, 293, 297, 303, 308, 315, 321, 328, 338, 343, 348, 354, 361, 367, 371, 376, 380, 382, 389, 392, 395, 406, 410, 416, 420, 430, 434, 437, 440, 446, 452, 454, 457, 466, 469, 473, 476, 479, 481, 484, 486, 488, 493, 498, 501, 503, 505, 511, 515, 522, 523, 529, 531, 534, 538, 541, 546, 551, 554, 557, 566, 571, 575, 579, 581, 586, 588, 589, 597, 599, 613, 618, 621, 625, 627, 634, 638, 642, 648, 651, 656, 659, 662, 667, 673, 678, 687, 690, 700, 703, 707, 708, 714, 723, 725, 730, 732, 733, 738, 740, 745, 749, 754, 756, 766, 767, 774, 780, 781, 793, 799, 801, 806, 808, 811, 818, 824, 828, 834, 838, 842, 846, 848, 852, 856, 857, 860, 863, 866, 868, 875, 878, 881, 885, 886, 894, 900, 904, 909, 912, 918, 921, 924, 929, 933, 935, 940, 944, 947, 952, 956, 960, 962, 967, 971, 974, 978, 984, 987, 991, 998, 1002, 1007, 1012, 1017, 1021, 1024, 1028, 1032, 1037, 1038, 1041, 1043, 1048, 1053, 1058, 1062, 1064, 1069, 1073, 1078, 1082, 1087, 1093, 1096, 1100, 1106, 1113, 1116, 1123, 1124, 1130, 1134, 1138, 1141, 1144, 1147, 1151, 1155, 1161, 1166, 1169, 1174, 1177, 1180, 1185, 1188, 1191, 1194, 1195, 1199, 1200, 1208, 1212, 1216, 1219, 1222, 1225, 1228, 1233, 1238, 1240, 1244, 1249, 1253, 1258, 1260, 1264, 1268, 1272, 1275, 1279, 1284
 ];
-
-// Timestamps for each image (seconds) - derived to cover full narration
-const TIMESTAMPS = ACCENT_TIMESTAMPS.filter((_, i) => i % Math.floor(ACCENT_TIMESTAMPS.length / TOTAL_IMAGES) === 0).slice(0, TOTAL_IMAGES);
 
 // --- SHADERS ---
 const VERT_SHADER = `
@@ -431,26 +435,39 @@ function startExperience() {
                     updateVisibility(currentImageIndex);
                 }
                 console.log("Camera mode:", isFreeCamera ? "FREE" : "CINEMATIC");
-            }
-            
-            // Переключение таймингов стрелками
-            if (!isFreeCamera) {
-                if (e.key === 'ArrowRight') {
-                    if (currentImageIndex < TOTAL_IMAGES - 1) {
-                        currentImageIndex++;
-                        audio.currentTime = TIMESTAMPS[currentImageIndex];
+        }
+        
+        // Переключение на финальную сцену для теста
+        if (e.key.toLowerCase() === 'f') {
+            isFinalSequence = false; // Сброс флага для возможности повторного запуска
+            currentImageIndex = TOTAL_IMAGES - 1;
+            audio.currentTime = TIMESTAMPS[currentImageIndex];
+            startFinalSequence();
+        }
+        
+        // Переключение таймингов стрелками
+        if (!isFreeCamera) {
+            if (e.key === 'ArrowRight') {
+                if (currentImageIndex < TOTAL_IMAGES - 1) {
+                    currentImageIndex++;
+                    audio.currentTime = TIMESTAMPS[currentImageIndex];
+                    if (currentImageIndex === TOTAL_IMAGES - 1) {
+                        startFinalSequence();
+                    } else {
                         jumpToImage(currentImageIndex);
                     }
                 }
-                if (e.key === 'ArrowLeft') {
-                    if (currentImageIndex > 0) {
-                        currentImageIndex--;
-                        audio.currentTime = TIMESTAMPS[currentImageIndex];
-                        jumpToImage(currentImageIndex);
-                    }
+            }
+            if (e.key === 'ArrowLeft') {
+                if (currentImageIndex > 0) {
+                    currentImageIndex--;
+                    isFinalSequence = false; // Выход из финальной сцены при возврате
+                    audio.currentTime = TIMESTAMPS[currentImageIndex];
+                    jumpToImage(currentImageIndex);
                 }
             }
-        });
+        }
+    });
 
         audio.play().then(() => {
             console.log("Audio playing successfully");
@@ -595,84 +612,96 @@ function updateVisibility(currentIndex) {
 }
 
 function startFinalSequence() {
+    if (isFinalSequence) return;
     isFinalSequence = true;
+    console.log("Final sequence started");
     
     const img54 = imagePlanes[53];
     finalPlane.position.copy(img54.position);
     finalPlane.rotation.copy(img54.rotation);
     
+    // Сброс состояний для возможности повторного теста
+    gsap.killTweensOf(camera.position);
+    gsap.killTweensOf(camera);
+    gsap.killTweensOf(finalPlane.material.uniforms.uIntensity);
+    gsap.killTweensOf(img54.material.uniforms.uIntensity);
+    gsap.killTweensOf(centerPlane.material.uniforms.uIntensity);
+    gsap.killTweensOf(starField.material);
+    
+    finalPlane.material.uniforms.uIntensity.value = 0.0;
+    centerPlane.material.uniforms.uIntensity.value = 0.0;
+    starField.material.opacity = 0;
+    starField.scale.set(1, 1, 1);
+    camera.fov = 60;
+    camera.updateProjectionMatrix();
+
     const tl = gsap.timeline();
     
-    // 7.1 Phase A: img_55 reveal
-    tl.to(img54.material.uniforms.uIntensity, { value: 0.0, duration: 4 });
-    tl.to(finalPlane.material.uniforms.uIntensity, { value: 1.0, duration: 4 }, "<");
+    // 7.1 Phase A: img_55 reveal (crossfade with img_54)
+    tl.to(img54.material.uniforms.uIntensity, { value: 0.0, duration: 4, ease: "sine.inOut" });
+    tl.to(finalPlane.material.uniforms.uIntensity, { value: 1.0, duration: 4, ease: "sine.inOut" }, "<");
     
     tl.addPause("+=2");
     
     // 7.2 & 7.3 Phase B & C: Dolly Zoom + Center Image + Stars
     tl.add(() => {
-        // Dolly Zoom
+        console.log("Dolly Zoom phase started");
+        // Dolly Zoom: Камера летит к центру, но FOV расширяется
         gsap.to(camera.position, {
-            x: 0, y: 0, z: 600,
-            duration: 8,
+            x: 0, y: 1000, z: 0, // Позиция над центром
+            duration: 12,
             ease: "power2.inOut",
-            onUpdate: () => camera.lookAt(0, 0, 0)
+            onUpdate: () => {
+                camera.lookAt(0, 0, 0);
+            }
         });
+        
         gsap.to(camera, {
-            fov: 90,
-            duration: 8,
+            fov: 100, // Расширение угла обзора
+            duration: 12,
             ease: "power2.inOut",
             onUpdate: () => camera.updateProjectionMatrix()
         });
         
         // Center Image Fade In
-        gsap.to(centerPlane.material.uniforms.uIntensity, { value: 1.0, duration: 4, delay: 2 });
+        gsap.to(centerPlane.material.uniforms.uIntensity, { value: 1.0, duration: 6, delay: 2 });
         
         // StarField Fade In
-        gsap.to(starField.material, { opacity: 1, duration: 5 });
+        gsap.to(starField.material, { opacity: 1, duration: 8 });
         
         // Arc Labels
         arcLabels.forEach((div, i) => {
-            gsap.to(div, { opacity: 0.6, duration: 1, delay: 3 + i * 0.5 });
+            gsap.to(div, { opacity: 0.6, duration: 2, delay: 4 + i * 0.5 });
         });
     });
 
     // 7.4 Phase D: Red Dot & Fade to Black
     tl.add(() => {
+        console.log("Final fade phase started");
         // img_0 fade out
-        gsap.to(centerPlane.material.uniforms.uIntensity, { value: 0, duration: 2, delay: 10 });
+        gsap.to(centerPlane.material.uniforms.uIntensity, { value: 0, duration: 4, delay: 15 });
         
-        // Stars movement
-        gsap.to(starField.scale, { x: 0.01, y: 0.01, z: 0.01, duration: 10, delay: 10 });
+        // Stars movement (implosion)
+        gsap.to(starField.scale, { x: 0.001, y: 0.001, z: 0.001, duration: 15, delay: 15, ease: "power2.in" });
         
         // Labels fade out
-        arcLabels.forEach(div => gsap.to(div, { opacity: 0, duration: 1, delay: 10 }));
+        arcLabels.forEach(div => gsap.to(div, { opacity: 0, duration: 2, delay: 15 }));
         
-        // Red Dot
-        const dotGeo = new THREE.SphereGeometry(2, 32, 32);
+        // Red Dot logic (existing or new)
+        const dotGeo = new THREE.SphereGeometry(5, 32, 32);
         const dotMat = new THREE.MeshBasicMaterial({ color: 0xCC2200, transparent: true, opacity: 0 });
         const redDot = new THREE.Mesh(dotGeo, dotMat);
         scene.add(redDot);
         
-        gsap.to(redDot.scale, { x: 20, y: 20, z: 20, duration: 2, delay: 12 });
-        gsap.to(redDot.material, { opacity: 1, duration: 2, delay: 12 });
-        
-        // Flicker
-        gsap.to(redDot.material, {
-            opacity: 0.3,
-            duration: 0.4,
-            repeat: -1,
-            yoyo: true,
-            ease: "sine.inOut",
-            delay: 14
-        });
+        gsap.to(redDot.material, { opacity: 1, duration: 3, delay: 18 });
+        gsap.to(redDot.scale, { x: 10, y: 10, z: 10, duration: 3, delay: 18 });
         
         // Camera slow move to dot
-        gsap.to(camera.position, { z: 50, duration: 15, delay: 12, ease: "none" });
+        gsap.to(camera.position, { y: 100, duration: 20, delay: 18, ease: "none" });
         
         // Final fade to black
-        gsap.to("#fade-overlay", { opacity: 1, duration: 2, delay: 25 });
-    }, "+=8");
+        gsap.to("#fade-overlay", { opacity: 1, duration: 5, delay: 35 });
+    }, "+=10");
 }
 
 function animate(time) {
