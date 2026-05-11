@@ -341,13 +341,12 @@ Right half: photorealistic stone maze walls, aged and mossy.
 Left half: aerial sketch diagram.
 RED accent: the path already taken is marked in red.
 
-[45] — Всё одно (буддийское колесо + Ницше)
+[45] — Танец обстоятельств (фигуры кружатся)
 Тайминг: 19:18–19:40
-Abstract: a large circle/wheel that contains within it all the previous images — tiny, embedded.
-Right half: photorealistic engraving detail.
-Left half: sketch of the wheel.
-RED accent: the hub of the wheel — red.
-Nietzsche easter egg: Eternal Recurrence wheel — the snake Ouroboros biting its tail forms the outer ring.
+Multiple translucent figures in a circular dance. Some are people, some are abstract shapes.
+Right half: photorealistic overlapping movement blur.
+Left half: sketch lines of the circular motion.
+RED accent: one figure in the dance is red — the self.
 
 [46] — Начать сначала (чистый лист)
 Тайминг: 19:26–19:44
@@ -356,12 +355,13 @@ Right half: photorealistic paper texture, light creases.
 Left half: sketch of the figure.
 RED accent: the first mark the figure makes on the paper — a red dot.
 
-[47] — Танец обстоятельств (фигуры кружатся)
+[47] — Всё одно (буддийское колесо + Ницше)
 Тайминг: 19:45–20:08
-Multiple translucent figures in a circular dance. Some are people, some are abstract shapes.
-Right half: photorealistic overlapping movement blur.
-Left half: sketch lines of the circular motion.
-RED accent: one figure in the dance is red — the self.
+Abstract: a large circle/wheel that contains within it all the previous images — tiny, embedded.
+Right half: photorealistic engraving detail.
+Left half: sketch of the wheel.
+RED accent: the hub of the wheel — red.
+Nietzsche easter egg: Eternal Recurrence wheel — the snake Ouroboros biting its tail forms the outer ring.
 
 [48] — Находить и терять себя (зеркала)
 Тайминг: 20:08–20:25
@@ -370,16 +370,8 @@ Right half: photorealistic reflections with depth.
 Left half: reflections as sketch, increasingly simple.
 RED accent: one reflection — the youngest — has red eyes.
 
-[49] — Бесконечный шанс (лестница Эшера)
-Тайминг: 20:19–20:28
-An impossible staircase (Escher-style) going in all directions simultaneously.
-A figure climbs serenely, not confused by the paradox.
-Right half: photorealistic stone steps.
-Left half: sketch of the impossible geometry.
-RED accent: the highest visible step — red.
-
-[50] — Уроборос (змея кусает хвост)
-Тайминг: 20:28–20:44
+[49] — Уроборос (змея кусает хвост)
+Тайминг: 20:19–20:53
 A serpent biting its own tail, forming a perfect circle. Inside the circle — a small boy reading a book
 (mirroring image 01).
 Right half: photorealistic snake scales, detailed.
@@ -387,8 +379,16 @@ Left half: the snake's tail end as sketch dissolving.
 RED accent: the bite point — red.
 Nietzsche easter egg: Primary symbol of Eternal Recurrence from "Also Sprach Zarathustra."
 
+[50] — Бесконечный шанс (лестница Эшера)
+Тайминг: 21:04–21:24
+An impossible staircase (Escher-style) going in all directions simultaneously.
+A figure climbs serenely, not confused by the paradox.
+Right half: photorealistic stone steps.
+Left half: sketch of the impossible geometry.
+RED accent: the highest visible step — red.
+
 [51] — Просто создавать (руки лепят форму из тьмы)
-Тайминг: 20:44–21:24
+Тайминг: 20:00–21:24
 Two hands cupped together. From between them — a glowing shape emerging, undefined, pure light.
 Right half: photorealistic hands, detailed skin.
 Left half: the emerging shape as sketch lines.
