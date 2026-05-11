@@ -1143,9 +1143,6 @@ function startFinalSequence(skipInitial = false) {
     isFinalSequence = true;
     console.log("Final sequence started", skipInitial ? "(skipping initial flight)" : "");
     
-    // Плавное затухание субтитров
-    gsap.to("#subtitle-container", { opacity: 0, duration: 1.5 });
-
     // Останавливаем все фоновые процессы дыхания камеры
     if (finalTimeline) finalTimeline.kill();
     gsap.killTweensOf(camera.position);
@@ -1209,6 +1206,9 @@ function startFinalSequence(skipInitial = false) {
     finalTimeline.add(() => {
         console.log("Phase: Moving to absolute center, showing the circle");
         
+        // Скрываем субтитры плавно, когда прошли ~20% пути к центру (18с * 0.2 = 3.6с)
+        gsap.to("#subtitle-container", { opacity: 0, duration: 2, delay: 3.6 });
+
         gsap.to(camera.position, {
             x: 0, y: 15000, z: 0, // Цель — центр
             duration: 18,
