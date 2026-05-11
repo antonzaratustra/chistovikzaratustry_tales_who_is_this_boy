@@ -703,26 +703,51 @@ function startExperience() {
         const startLabel = document.getElementById('start-label');
         const loader = document.getElementById('loader');
         const startScreen = document.getElementById('start-screen');
+        const mainTitle = document.getElementById('main-title');
         
         // Плавно гасим только надписи, оставляя черный экран
         gsap.to([startLabel, loader], { 
             opacity: 0, 
-            duration: 2.0, 
+            duration: 1.5, 
             ease: "power2.inOut",
             onComplete: () => {
-                // После того как надписи исчезли, ждем еще секунду в темноте
-                const introTimeout = setTimeout(() => {
+                // После того как надписи исчезли, ждем полсекунды
+                const titleShowTimeout = setTimeout(() => {
                     if (!isIntroActive) return;
                     
-                    // Убираем черный оверлей и запускаем интро
-                    startScreen.remove();
+                    // Резко показываем название
+                    mainTitle.style.opacity = "1";
                     
-                    runIntroSequence().then(() => {
+                    // Хоррор-эффект звуком
+                    if (midi) midi.playHorrorSlam();
+                    
+                    // Держим название 1.5 секунды
+                    const titleHideTimeout = setTimeout(() => {
                         if (!isIntroActive) return;
-                        finishIntroAndStartAudio();
-                    });
-                }, 1000);
-                introTimeouts.push(introTimeout);
+                        
+                        // Резко убираем название
+                        mainTitle.style.opacity = "0";
+                        
+                        // Еще небольшая пауза перед началом (0.3с)
+                        const startIntroTimeout = setTimeout(() => {
+                            if (!isIntroActive) return;
+                            
+                            // Убираем черный оверлей и запускаем интро
+                            startScreen.remove();
+                            mainTitle.remove();
+                            
+                            runIntroSequence().then(() => {
+                                if (!isIntroActive) return;
+                                finishIntroAndStartAudio();
+                            });
+                        }, 300);
+                        introTimeouts.push(startIntroTimeout);
+                        
+                    }, 1500);
+                    introTimeouts.push(titleHideTimeout);
+                    
+                }, 500);
+                introTimeouts.push(titleShowTimeout);
             }
         });
         

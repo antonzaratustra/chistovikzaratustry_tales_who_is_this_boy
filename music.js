@@ -78,6 +78,30 @@ export class MidiGenerator {
             this.shimmerSynth.connect(this.delay);
             this.droneSynth.connect(this.reverb);
 
+            // Horror Slam Synth (Noise + Metal)
+            this.horrorDistortion = new this.T.Distortion(0.8).connect(this.musicBus);
+            this.horrorSynth = new this.T.MetalSynth({
+                frequency: 80,
+                envelope: {
+                    attack: 0.001,
+                    decay: 1.5,
+                    release: 1.5
+                },
+                harmonicity: 5.1,
+                modulationIndex: 40,
+                resonance: 100,
+                octaves: 1.5
+            }).connect(this.horrorDistortion);
+
+            this.noiseSynth = new this.T.NoiseSynth({
+                noise: { type: "brown" },
+                envelope: {
+                    attack: 0.005,
+                    decay: 0.2,
+                    sustain: 0
+                }
+            }).connect(this.horrorDistortion);
+
             // Mystical scales (C Phrygian, C Minor, etc.)
             this.scale = ['C', 'Db', 'Eb', 'F', 'G', 'Ab', 'Bb']; 
             this.octaves = [3, 4, 5];
@@ -145,6 +169,26 @@ export class MidiGenerator {
         // Add a high sparkle
         if (this.shimmerSynth) {
             this.shimmerSynth.triggerAttackRelease("C5", "4n", now + 0.5, 0.1);
+        }
+    }
+
+    /**
+     * Horror-themed heavy slam for titles
+     */
+    playHorrorSlam() {
+        if (!this.horrorSynth || !this.noiseSynth) return;
+        
+        const now = this.T.now();
+        
+        // Low frequency "metal" strike
+        this.horrorSynth.triggerAttackRelease("C1", "1n", now, 1.0);
+        
+        // Brown noise burst for the "impact" feel
+        this.noiseSynth.triggerAttackRelease("4n", now, 0.8);
+        
+        // Deep dissonant drone layers
+        if (this.droneSynth) {
+            this.droneSynth.triggerAttackRelease(["C1", "Db1", "Gb1"], "2n", now, 0.5);
         }
     }
 
