@@ -1284,9 +1284,9 @@ function startFinalSequence(skipInitial = false) {
         });
 
         // --- ЭФФЕКТ ОБРАТНОЙ ПЕРЕМОТКИ ---
-        // Появление на 70% пути звезд (через 21 секунду)
+        // Появление на последних этапах пути звезд (через 26 секунд)
         setTimeout(() => {
-            console.log("Starting masked rewind effect at 70% of collapse");
+            console.log("Starting masked rewind effect shortly before collapse ends");
             
             // СТРОГО ЦЕНТРИРУЕМ ПЛОСКОСТЬ ПЕРЕМОТКИ (могла остаться с интро на позиции 1-й картинки)
             rewindPlane.position.set(0, 200, 0); 
@@ -1317,7 +1317,7 @@ function startFinalSequence(skipInitial = false) {
             imagePlanes.forEach(p => p.visible = false);
             finalPlane.visible = false;
 
-        }, 21000); 
+        }, 26000); 
         
         gsap.to("#fade-overlay", { opacity: 1, duration: 10, delay: 35 });
     }, "+=18");
