@@ -7,6 +7,19 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { MidiGenerator } from './music.js';
 
 // --- CONFIGURATION ---
+
+/**
+ * FRAMEWORK: SPECIAL SLIDES EFFECTS
+ * Позволяет добавлять спецэффекты для конкретных слайдов.
+ * Сейчас используется тип 'floating_accents' — слова в звездочках *слово*
+ * не только выделяются красным в титрах, но и "всплывают" по бокам экрана.
+ */
+const SPECIAL_SLIDES_CONFIG = {
+    22: { type: 'floating_accents' }, // Что-то не так / Мир
+    23: { type: 'floating_accents' }, // Социальная лестница
+    24: { type: 'floating_accents' }  // Продолжение (до "сделает все правильно")
+};
+
 const R = 16000;            
 const CAMERA_OFFSET = 0;    
 const IMAGE_SIZE = 1200;    
@@ -157,12 +170,9 @@ let activeFloatingWords = [];
 let floatingTimeouts = [];
 
 // Настройки специальных слайдов (фреймворк для эффектов)
-const SPECIAL_SLIDES_CONFIG = {
-    22: { type: 'floating_accents' }, // Что-то не так / Мир
-    23: { type: 'floating_accents' }, // Социальная лестница
-    24: { type: 'floating_accents' }  // Продолжение (до "сделает все правильно")
-};
-
+// Используется для запуска специфических визуальных эффектов на определенных слайдах.
+// Тип 'floating_accents' — слова в звездочках *слово* всплывают по бокам экрана.
+// Перенесено в начало секции GLOBALS для предотвращения дублирования.
 const NARRATION_TEXT = [
     { t: 3, text: "Чего хотел этот *мальчик*?" },
     { t: 10, text: "О чём он *думал*?" },
@@ -1267,8 +1277,8 @@ function transitionToImage(targetIndex, duration) {
     gsap.killTweensOf(camera.position);
     gsap.killTweensOf(camBasePos);
 
-    // Текущий угол камеры
-    const currentAngle = Math.atan2(camera.position.z, camera.position.x);
+    // Текущий угол камеры (берем из camBasePos, так как это чистая траектория)
+    const currentAngle = Math.atan2(camBasePos.z, camBasePos.x);
     // Целевой угол
     let targetAngle = (targetIndex / TOTAL_IMAGES) * Math.PI * 2 - Math.PI / 2;
     
@@ -1278,7 +1288,7 @@ function transitionToImage(targetIndex, duration) {
 
     const animObj = { 
         angle: currentAngle, 
-        height: camera.position.y,
+        height: camBasePos.y,
         distScale: FLIGHT_CONFIG.distanceMultiplier
     };
     
@@ -1531,9 +1541,17 @@ function animate(time) {
         controls.update();
     } else if (!isFinalSequence) {
         // Breathing
-        camera.position.y = camBasePos.y + Math.sin(t * FLIGHT_CONFIG.breathingSpeed) * FLIGHT_CONFIG.breathingAmp;
-        camera.position.x = camBasePos.x + Math.sin(t * FLIGHT_CONFIG.breathingSpeed * 0.6) * 5;
-        camera.position.z = camBasePos.z + Math.cos(t * FLIGHT_CONFIG.breathingSpeed * 0.6) * 5;
+        // Применяем смещение дыхания напрямую к камере, не меняя camBasePos.
+        // camBasePos — это чистая траектория полета.
+        const breathY = Math.sin(t * FLIGHT_CONFIG.breathingSpeed) * FLIGHT_CONFIG.breathingAmp;
+        const breathX = Math.sin(t * FLIGHT_CONFIG.breathingSpeed * 0.6) * 5;
+        const breathZ = Math.cos(t * FLIGHT_CONFIG.breathingSpeed * 0.6) * 5;
+
+        camera.position.set(
+            camBasePos.x + breathX,
+            camBasePos.y + breathY,
+            camBasePos.z + breathZ
+        );
     }
     
     composer.render();
