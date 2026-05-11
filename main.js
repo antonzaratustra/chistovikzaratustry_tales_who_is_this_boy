@@ -153,6 +153,15 @@ let isFinalSequence = false;
 let isFreeCamera = true; 
 let textures = [];
 let currentSubtitle = "";
+let activeFloatingWords = [];
+let floatingTimeouts = [];
+
+// Настройки специальных слайдов (фреймворк для эффектов)
+const SPECIAL_SLIDES_CONFIG = {
+    22: { type: 'floating_accents' }, // Что-то не так / Мир
+    23: { type: 'floating_accents' }, // Социальная лестница
+    24: { type: 'floating_accents' }  // Продолжение (до "сделает все правильно")
+};
 
 const NARRATION_TEXT = [
     { t: 3, text: "Чего хотел этот *мальчик*?" },
@@ -247,16 +256,16 @@ const NARRATION_TEXT = [
     { t: 503, text: "или с ним," },
     { t: 505, text: "или с *миром*," },
     { t: 511, text: "и, проходя по *социальной лестнице*" },
-    { t: 515, text: "своего детства и юности," },
+    { t: 515, text: "своего *детства* и *юности*," },
     { t: 522, text: "он ни с кем" },
     { t: 523, text: "*не контактировал* " },
     { t: 529, text: "глубоко и *близко*," },
-    { t: 531, text: "и часто" },
+    { t: 531, text: "и *часто*" },
     { t: 534, text: "*разочаровывался* в людях" },
     { t: 538, text: "и *рубил с плеча*," },
     { t: 541, text: "потому что он *судил по себе*," },
     { t: 546, text: "и люди не оправдывали его *ожиданий*." },
-    { t: 551, text: "Ему казалось, что он предъявлял" },
+    { t: 551, text: "Ему казалось, что он *предъявлял*" },
     { t: 554, text: "самые обычные *требования*," },
     { t: 557, text: "но они не могли их *выполнить*." },
     { t: 566, text: "Когда он был *маленький*," },
@@ -269,7 +278,7 @@ const NARRATION_TEXT = [
     { t: 589, text: "которую тоже нужно *исследовать*." },
     { t: 597, text: "И он *рос*" },
     { t: 599, text: "как росли" },
-    { t: 601, text: "многие тысячи и сотни тысяч" },
+    { t: 601, text: "многие тысячи и *сотни тысяч*" },
     { t: 604, text: "других *мальчиков*" },
     { t: 607, text: "со своими *надеждами*," },
     { t: 610, text: "со своими *достижениями*," },
@@ -945,12 +954,49 @@ function handleKeyDown(e) {
 function onAudioTimeUpdate(e) {
     const t = e.target ? e.target.currentTime : audio.currentTime;
     
-    // ОБНОВЛЯЕМ СУБТИТРЫ ВСЕГДА (даже в финале, пока они не скрыты)
+    if (isFinalSequence || isFreeCamera || isManualNavigation) {
+        // В этих режимах всё равно обновляем субтитры, если нужно
+        if (!isFreeCamera && !isManualNavigation) updateSubtitles(t);
+        return;
+    }
+
+    // 1. Сначала определяем актуальный индекс слайда для текущего времени
+    let newIndex = -1;
+    for (let i = TIMESTAMPS.length - 1; i >= 0; i--) {
+        if (t >= TIMESTAMPS[i]) {
+            newIndex = i;
+            break;
+        }
+    }
+
+    // 2. Если индекс изменился, обновляем его ДО вызова субтитров
+    if (newIndex !== -1 && newIndex !== currentImageIndex) {
+        const oldIndex = currentImageIndex;
+        currentImageIndex = newIndex;
+        
+        // Очистка при смене слайда (автоматической)
+        clearFloatingWords();
+
+        if (currentImageIndex === TOTAL_IMAGES - 1) {
+            jumpToImage(currentImageIndex);
+            updateVisibility(currentImageIndex);
+            setTimeout(() => {
+                if (!isManualNavigation && currentImageIndex === TOTAL_IMAGES - 1) {
+                    startFinalSequence();
+                }
+            }, 2000);
+        } else {
+            const rawDuration = (TIMESTAMPS[currentImageIndex + 1] || t + 10) - TIMESTAMPS[currentImageIndex];
+            const segmentDuration = Math.min(rawDuration * 0.85, 8.0); 
+            transitionToImage(currentImageIndex, segmentDuration);
+            updateVisibility(currentImageIndex);
+        }
+    }
+
+    // 3. Теперь обновляем субтитры (они будут знать актуальный currentImageIndex)
     if (!isFreeCamera && !isManualNavigation) {
         updateSubtitles(t);
     }
-
-    if (isFinalSequence || isFreeCamera || isManualNavigation) return;
     
     // Trigger MIDI accents/motifs
     for (let j = ACCENT_TIMESTAMPS.length - 1; j >= 0; j--) {
@@ -966,37 +1012,6 @@ function onAudioTimeUpdate(e) {
                 }
             }
             break;
-        }
-    }
-
-    // Ищем индекс кадра для текущего времени
-    let newIndex = -1;
-    for (let i = TIMESTAMPS.length - 1; i >= 0; i--) {
-        if (t >= TIMESTAMPS[i]) {
-            newIndex = i;
-            break;
-        }
-    }
-
-    if (newIndex !== -1 && newIndex !== currentImageIndex) {
-        // Если мы переходим на последний кадр (54-й), сначала показываем его
-        if (newIndex === TOTAL_IMAGES - 1) {
-            currentImageIndex = newIndex;
-            jumpToImage(currentImageIndex);
-            updateVisibility(currentImageIndex);
-            // Запуск финала через небольшую паузу после показа 54-й картинки
-            setTimeout(() => {
-                if (!isManualNavigation && currentImageIndex === TOTAL_IMAGES - 1) {
-                    startFinalSequence();
-                }
-            }, 2000);
-        } else {
-            currentImageIndex = newIndex;
-            // Ограничиваем длительность перехода максимум 8 секундами, чтобы не было "дрейфа"
-            const rawDuration = (TIMESTAMPS[currentImageIndex + 1] || t + 10) - TIMESTAMPS[currentImageIndex];
-            const segmentDuration = Math.min(rawDuration * 0.85, 8.0); 
-            transitionToImage(currentImageIndex, segmentDuration);
-            updateVisibility(currentImageIndex);
         }
     }
 }
@@ -1046,6 +1061,12 @@ function updateSubtitles(t, isJump = false) {
                 return result;
             };
 
+            // Извлекаем полные акцентные слова для спец-эффекта
+            const extractAccents = (text) => {
+                const matches = text.match(/\*([^*]+)\*/g);
+                return matches ? matches.map(m => m.replace(/\*/g, '')) : [];
+            };
+
             const setInstantText = () => {
                 container.innerHTML = "";
                 if (newText) {
@@ -1062,11 +1083,33 @@ function updateSubtitles(t, isJump = false) {
                 }
             };
 
+            const triggerSpecialEffects = () => {
+                const slideConfig = SPECIAL_SLIDES_CONFIG[currentImageIndex];
+                if (slideConfig && slideConfig.type === 'floating_accents') {
+                    const accents = extractAccents(newText);
+                    accents.forEach((word, idx) => {
+                        // Появляются с небольшой задержкой относительно начала фразы
+                        const timeout = setTimeout(() => {
+                            if (currentSubtitle === newText) { 
+                                createFloatingWord(word);
+                            }
+                            // Удаляем себя из списка таймаутов
+                            floatingTimeouts = floatingTimeouts.filter(t => t !== timeout);
+                        }, idx * 1500 + 500); 
+                        floatingTimeouts.push(timeout);
+                    });
+                }
+            };
+
             if (isJump) {
                 // При прыжке — мгновенно меняем текст без затуханий
                 setInstantText();
+                clearFloatingWords();
+                triggerSpecialEffects(); // Все равно запускаем эффекты
             } else {
                 // При обычном проигрывании — плавно через typewriter
+                triggerSpecialEffects();
+                
                 gsap.to(container, { 
                     opacity: 0, 
                     duration: 0.2, 
@@ -1100,6 +1143,66 @@ function updateSubtitles(t, isJump = false) {
     }
 }
 
+function createFloatingWord(text) {
+    const word = document.createElement('div');
+    word.className = 'floating-word';
+    word.textContent = text;
+    
+    // Случайный размер
+    const fontSize = Math.floor(Math.random() * 40) + 20; // 20px - 60px
+    word.style.fontSize = fontSize + 'px';
+    
+    // Случайная позиция (избегая центральной области 40%)
+    const side = Math.random() > 0.5 ? 'left' : 'right';
+    let x;
+    if (side === 'left') {
+        x = Math.random() * 30; // 0-30% экрана
+    } else {
+        x = 70 + Math.random() * 30; // 70-100% экрана
+    }
+    
+    const y = 10 + Math.random() * 80; // 10-90% высоты
+    
+    word.style.left = x + '%';
+    word.style.top = y + '%';
+    if (side === 'right') word.style.transform = 'translateX(-100%)';
+    
+    document.body.appendChild(word);
+    activeFloatingWords.push(word);
+    
+    // Анимация
+    gsap.to(word, {
+        opacity: 0.7,
+        duration: 1.5,
+        ease: "power2.out",
+        onComplete: () => {
+            gsap.to(word, {
+                opacity: 0,
+                duration: 2.5,
+                delay: 2.0,
+                ease: "power2.in",
+                onComplete: () => {
+                    word.remove();
+                    activeFloatingWords = activeFloatingWords.filter(w => w !== word);
+                }
+            });
+        }
+    });
+}
+
+function clearFloatingWords() {
+    // Очистка таймаутов
+    floatingTimeouts.forEach(t => clearTimeout(t));
+    floatingTimeouts = [];
+    
+    // Удаление элементов
+    activeFloatingWords.forEach(word => {
+        gsap.killTweensOf(word);
+        word.remove();
+    });
+    activeFloatingWords = [];
+}
+
 function setCameraToImage(index) {
     const angle = (index / TOTAL_IMAGES) * Math.PI * 2 - Math.PI / 2;
     const dist = (R - CAMERA_OFFSET) * FLIGHT_CONFIG.distanceMultiplier;
@@ -1122,6 +1225,9 @@ function jumpToImage(index) {
     gsap.killTweensOf(camera.position);
     gsap.killTweensOf(camera);
     gsap.killTweensOf(camBasePos);
+    
+    // Очистка плавающих слов при прыжке
+    clearFloatingWords();
     
     // Сброс интенсивностей (на случай если мы в середине перехода или финала)
     imagePlanes.forEach((p, i) => {
