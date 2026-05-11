@@ -1287,6 +1287,10 @@ function startFinalSequence(skipInitial = false) {
         // Появление на 70% пути звезд (через 21 секунду)
         setTimeout(() => {
             console.log("Starting masked rewind effect at 70% of collapse");
+            
+            // СТРОГО ЦЕНТРИРУЕМ ПЛОСКОСТЬ ПЕРЕМОТКИ (могла остаться с интро на позиции 1-й картинки)
+            rewindPlane.position.set(0, 200, 0); 
+            rewindPlane.rotation.set(-Math.PI / 2, 0, 0);
             rewindPlane.visible = true;
             
             const rewindImages = [...textures].slice(1, 55).reverse(); 
