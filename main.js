@@ -6,12 +6,20 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // --- CONFIGURATION ---
-const R = 16000;            // Огромный радиус, чтобы картинки не слипались
-const CAMERA_OFFSET = 0;    // Камера прямо НАД картинкой для вертикального взгляда
-const CAMERA_HEIGHT = 1500; // Высота полета
+const R = 16000;            
+const CAMERA_OFFSET = 0;    
+const CAMERA_HEIGHT = 1500; 
 const IMAGE_SIZE = 1200;    
 const CENTER_IMAGE_SIZE = 3000;
 const TOTAL_IMAGES = 54;
+
+// Настройки полета (для тестирования)
+const FLIGHT_CONFIG = {
+    heightMultiplier: 1.2,    // Во сколько раз поднимаемся в середине полета
+    distanceMultiplier: 1.0,  // Множитель радиуса (1.0 = строго по кругу)
+    breathingAmp: 8,          // Амплитуда дыхания
+    breathingSpeed: 0.8       // Скорость дыхания
+};
 
 // Timestamps for each image (seconds)
 const TIMESTAMPS = [
@@ -389,6 +397,24 @@ function startExperience() {
             }
             console.log("Camera mode:", isFreeCamera ? "FREE" : "CINEMATIC");
         }
+        
+        // Переключение таймингов стрелками
+        if (!isFreeCamera) {
+            if (e.key === 'ArrowRight') {
+                if (currentImageIndex < TOTAL_IMAGES - 1) {
+                    currentImageIndex++;
+                    audio.currentTime = TIMESTAMPS[currentImageIndex];
+                    jumpToImage(currentImageIndex);
+                }
+            }
+            if (e.key === 'ArrowLeft') {
+                if (currentImageIndex > 0) {
+                    currentImageIndex--;
+                    audio.currentTime = TIMESTAMPS[currentImageIndex];
+                    jumpToImage(currentImageIndex);
+                }
+            }
+        }
     });
 
     audio.play().catch(err => {
@@ -427,7 +453,7 @@ function onAudioTimeUpdate(e) {
 
 function setCameraToImage(index) {
     const angle = (index / TOTAL_IMAGES) * Math.PI * 2 - Math.PI / 2;
-    const dist = R - CAMERA_OFFSET;
+    const dist = (R - CAMERA_OFFSET) * FLIGHT_CONFIG.distanceMultiplier;
     camBasePos.set(
         Math.cos(angle) * dist,
         CAMERA_HEIGHT,
@@ -435,8 +461,15 @@ function setCameraToImage(index) {
     );
     camera.position.copy(camBasePos);
     
-    // Фиксируем взгляд строго вниз
-    camera.rotation.set(-Math.PI / 2, 0, angle + Math.PI / 2); 
+    // Фиксируем взгляд строго вниз, НО БЕЗ ВРАЩЕНИЯ Z
+    // Чтобы картинки не наклонялись, камера должна иметь постоянную ориентацию осей
+    camera.rotation.set(-Math.PI / 2, 0, 0); 
+}
+
+function jumpToImage(index) {
+    gsap.killTweensOf(camBasePos); // Остановить текущие анимации
+    setCameraToImage(index);
+    updateVisibility(index);
 }
 
 function transitionToImage(targetIndex, duration) {
@@ -451,7 +484,8 @@ function transitionToImage(targetIndex, duration) {
 
     const animObj = { 
         angle: currentAngle, 
-        height: CAMERA_HEIGHT 
+        height: CAMERA_HEIGHT,
+        distScale: FLIGHT_CONFIG.distanceMultiplier
     };
     
     const tl = gsap.timeline();
@@ -459,7 +493,7 @@ function transitionToImage(targetIndex, duration) {
     // Движение строго по дуге над окружностью
     tl.to(animObj, {
         angle: targetAngle,
-        height: CAMERA_HEIGHT * 1.8, // Поднимаемся в полете
+        height: CAMERA_HEIGHT * FLIGHT_CONFIG.heightMultiplier, 
         duration: duration * 0.5,
         ease: "power2.inOut",
         onUpdate: () => {
@@ -478,15 +512,14 @@ function transitionToImage(targetIndex, duration) {
 }
 
 function updateCameraFromAnim(animObj) {
-    const dist = R - CAMERA_OFFSET;
+    const dist = (R - CAMERA_OFFSET) * animObj.distScale;
     camBasePos.x = Math.cos(animObj.angle) * dist;
     camBasePos.y = animObj.height;
     camBasePos.z = Math.sin(animObj.angle) * dist;
     
     camera.position.copy(camBasePos);
-    // Камера всегда смотрит вертикально вниз. 
-    // rotation.z меняется вместе с углом, чтобы "верх" камеры всегда был направлен к центру или от него (по вашему желанию)
-    camera.rotation.set(-Math.PI / 2, 0, animObj.angle + Math.PI / 2);
+    // Камера всегда смотрит вертикально вниз, без вращения вокруг Z
+    camera.rotation.set(-Math.PI / 2, 0, 0);
 }
 
 function updateVisibility(currentIndex) {
@@ -600,9 +633,9 @@ function animate(time) {
         controls.update();
     } else if (!isFinalSequence) {
         // Breathing
-        camera.position.y = camBasePos.y + Math.sin(t * 0.8) * 8;
-        camera.position.x = camBasePos.x + Math.sin(t * 0.5) * 5;
-        camera.position.z = camBasePos.z + Math.cos(t * 0.5) * 5;
+        camera.position.y = camBasePos.y + Math.sin(t * FLIGHT_CONFIG.breathingSpeed) * FLIGHT_CONFIG.breathingAmp;
+        camera.position.x = camBasePos.x + Math.sin(t * FLIGHT_CONFIG.breathingSpeed * 0.6) * 5;
+        camera.position.z = camBasePos.z + Math.cos(t * FLIGHT_CONFIG.breathingSpeed * 0.6) * 5;
     }
     
     composer.render();
