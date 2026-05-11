@@ -143,6 +143,7 @@ let centerPlane, finalPlane, rewindPlane; // img_0, img_55 and rewind plane
 let starField;
 let audio, midi;
 let finalTimeline;
+let navTimeline; // Добавляем переменную для управления текущим переходом
 let isManualNavigation = false;
 let isIntroActive = false;
 let introTimeouts = [];
@@ -858,17 +859,21 @@ function handleKeyDown(e) {
                 currentImageIndex++;
                 console.log("Moving to index:", currentImageIndex, "Time:", TIMESTAMPS[currentImageIndex]);
                 audio.currentTime = TIMESTAMPS[currentImageIndex];
-                updateSubtitles(audio.currentTime); // Update text
+                updateSubtitles(audio.currentTime); 
                 if (audio.paused) audio.play();
+                
                 jumpToImage(currentImageIndex);
                 
+                // Если перешли на последнюю картинку, планируем финал
                 if (currentImageIndex === TOTAL_IMAGES - 1) {
                     setTimeout(() => {
-                        if (currentImageIndex === TOTAL_IMAGES - 1) startFinalSequence();
-                    }, 1000);
+                        if (!isManualNavigation && currentImageIndex === TOTAL_IMAGES - 1) {
+                            startFinalSequence();
+                        }
+                    }, 2000);
                 }
                 
-                setTimeout(() => isManualNavigation = false, 500);
+                setTimeout(() => isManualNavigation = false, 300); // Уменьшил задержку лока
             } else {
                 console.log("Already at last image");
             }
@@ -929,18 +934,25 @@ function onAudioTimeUpdate(e) {
     }
 
     if (newIndex !== -1 && newIndex !== currentImageIndex) {
-        currentImageIndex = newIndex;
-        
-        if (currentImageIndex < TOTAL_IMAGES - 1) {
+        // Если мы переходим на последний кадр (54-й), сначала показываем его
+        if (newIndex === TOTAL_IMAGES - 1) {
+            currentImageIndex = newIndex;
+            jumpToImage(currentImageIndex);
+            updateVisibility(currentImageIndex);
+            // Запуск финала через небольшую паузу после показа 54-й картинки
+            setTimeout(() => {
+                if (!isManualNavigation && currentImageIndex === TOTAL_IMAGES - 1) {
+                    startFinalSequence();
+                }
+            }, 2000);
+        } else {
+            currentImageIndex = newIndex;
             // Ограничиваем длительность перехода максимум 8 секундами, чтобы не было "дрейфа"
             const rawDuration = (TIMESTAMPS[currentImageIndex + 1] || t + 10) - TIMESTAMPS[currentImageIndex];
             const segmentDuration = Math.min(rawDuration * 0.85, 8.0); 
             transitionToImage(currentImageIndex, segmentDuration);
-        } else {
-            // Достигли последнего кадра
-            startFinalSequence();
+            updateVisibility(currentImageIndex);
         }
-        updateVisibility(currentImageIndex);
     }
 }
 
@@ -1093,7 +1105,7 @@ function updateCameraFromAnim(animObj) {
 }
 
 function updateVisibility(currentIndex) {
-    if (isFreeCamera) {
+    if (isFreeCamera || isFinalSequence) {
         imagePlanes.forEach(plane => plane.visible = true);
         return;
     }
@@ -1111,6 +1123,9 @@ function startFinalSequence(skipInitial = false) {
     isFinalSequence = true;
     console.log("Final sequence started", skipInitial ? "(skipping initial flight)" : "");
     
+    // Плавное затухание субтитров
+    gsap.to("#subtitle-container", { opacity: 0, duration: 1.5 });
+
     // Останавливаем все фоновые процессы дыхания камеры
     if (finalTimeline) finalTimeline.kill();
     gsap.killTweensOf(camera.position);
@@ -1119,9 +1134,11 @@ function startFinalSequence(skipInitial = false) {
     
     const img01 = imagePlanes[0];
     
-    // Сброс состояний материалов
+    // Сброс состояний материалов и ГАРАНТИЯ ВИДИМОСТИ всех картинок
     imagePlanes.forEach(p => {
         gsap.killTweensOf(p.material.uniforms.uIntensity);
+        p.visible = true;
+        p.material.uniforms.uIntensity.value = 1.0;
     });
     gsap.killTweensOf(finalPlane.material.uniforms.uIntensity);
     gsap.killTweensOf(centerPlane.material.uniforms.uIntensity);
@@ -1138,8 +1155,6 @@ function startFinalSequence(skipInitial = false) {
     rewindPlane.visible = false;
     starField.material.opacity = 0;
     starField.scale.set(1, 1, 1);
-    
-    imagePlanes.forEach(p => p.visible = true);
 
     finalTimeline = gsap.timeline();
     
