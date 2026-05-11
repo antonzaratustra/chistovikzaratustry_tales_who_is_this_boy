@@ -1,15 +1,16 @@
 import * as THREE from 'three';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // --- CONFIGURATION ---
-const R = 6000;             // Еще больше радиус для простора
-const CAMERA_OFFSET = 1800; // Камера дальше от картинки к центру
-const CAMERA_HEIGHT = 1000; // Камера высоко сверху
-const IMAGE_SIZE = 1200;    // Картинки большие
-const CENTER_IMAGE_SIZE = 2500;
+const R = 16000;            // Огромный радиус, чтобы картинки не слипались
+const CAMERA_OFFSET = 0;    // Камера прямо НАД картинкой для вертикального взгляда
+const CAMERA_HEIGHT = 1500; // Высота полета
+const IMAGE_SIZE = 1200;    
+const CENTER_IMAGE_SIZE = 3000;
 const TOTAL_IMAGES = 54;
 
 // Timestamps for each image (seconds)
@@ -22,8 +23,73 @@ const TIMESTAMPS = [
     2460.0, 2520.0, 2580.0, 2640.0
 ];
 
+// --- SHADERS ---
+const VERT_SHADER = `
+varying vec2 vUv;
+void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+const FRAG_SHADER = `
+precision highp float;
+
+uniform sampler2D uTexture;
+uniform float uTime;
+uniform float uSeed;
+uniform float uIntensity;
+
+varying vec2 vUv;
+
+float hash(vec2 p) {
+    p = fract(p * vec2(234.34, 435.345));
+    p += dot(p, p + 34.23);
+    return fract(p.x * p.y);
+}
+
+float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(
+        mix(hash(i), hash(i + vec2(1,0)), f.x),
+        mix(hash(i + vec2(0,1)), hash(i + vec2(1,1)), f.x),
+        f.y
+    );
+}
+
+float fbm(vec2 p) {
+    float v = 0.0;
+    float amp = 0.5;
+    for(int i = 0; i < 4; i++) {
+        v += amp * noise(p);
+        p *= 2.1;
+        amp *= 0.5;
+    }
+    return v;
+}
+
+void main() {
+    vec2 center = vUv - 0.5;
+    float dist = length(center);
+    float t = uTime * 0.4 + uSeed * 17.3;
+    vec2 noiseUv = vUv * 2.5 + vec2(t * 0.1, t * 0.07);
+    float n = fbm(noiseUv);
+    float edgeFactor = smoothstep(0.25, 0.5, dist);
+    float noisyEdge = smoothstep(0.0, 1.0, 1.0 - dist * 2.0 + n * 0.6 * edgeFactor);
+    float brushAngle = atan(center.y, center.x);
+    float brush = fbm(vec2(brushAngle * 2.0 + uSeed, t * 0.2)) * 0.3;
+    float finalAlpha = noisyEdge + brush * (1.0 - noisyEdge);
+    finalAlpha = clamp(finalAlpha, 0.0, 1.0);
+    finalAlpha *= uIntensity;
+    vec4 texColor = texture2D(uTexture, vUv);
+    gl_FragColor = vec4(texColor.rgb, texColor.a * finalAlpha);
+}
+`;
+
 // --- GLOBALS ---
-let scene, camera, renderer, labelRenderer, composer;
+let scene, camera, renderer, labelRenderer, composer, controls;
 let imagePlanes = [];
 let centerPlane, finalPlane; // img_0 and img_55
 let starField;
@@ -31,28 +97,19 @@ let arcLabels = [];
 let audio;
 let currentImageIndex = 0;
 let isFinalSequence = false;
-let shaders = { vert: '', frag: '' };
+let isFreeCamera = true; // Включаем свободную камеру по умолчанию для осмотра
 let textures = [];
+
+// Base camera position for breathing
+let camBasePos = new THREE.Vector3();
 
 // --- INITIALIZATION ---
 async function init() {
     console.log("Initializing Three.js scene...");
     try {
-        // 1. Load Shaders
-        const [vertRes, fragRes] = await Promise.all([
-            fetch('./shaders/edge.vert.glsl'),
-            fetch('./shaders/edge.frag.glsl')
-        ]);
-        
-        if (!vertRes.ok || !fragRes.ok) throw new Error("Failed to load shaders");
-        
-        shaders.vert = await vertRes.text();
-        shaders.frag = await fragRes.text();
-        console.log("Shaders loaded");
-
-        // 2. Scene Setup
+        // 1. Scene Setup
         scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x050505); // Не совсем черный, чтобы видеть границы
+        scene.background = new THREE.Color(0x050505);
 
         camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 10, 30000);
         
@@ -61,9 +118,14 @@ async function init() {
         renderer.setPixelRatio(window.devicePixelRatio);
         document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-        // Вспомогательная сетка (можно убрать потом)
-        // const grid = new THREE.GridHelper(R * 2, 50, 0x333333, 0x111111);
-        // scene.add(grid);
+        // Controls
+        controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.screenSpacePanning = false;
+        controls.minDistance = 100;
+        controls.maxDistance = 20000;
+        controls.enabled = isFreeCamera;
 
         labelRenderer = new CSS2DRenderer();
         labelRenderer.setSize(window.innerWidth, window.innerHeight);
@@ -76,32 +138,33 @@ async function init() {
         const renderScene = new RenderPass(scene, camera);
         const bloomPass = new UnrealBloomPass(
             new THREE.Vector2(window.innerWidth, window.innerHeight),
-            0.6, 0.4, 0.1
+            0.15, // Сильно уменьшен эффект свечения (было 0.6)
+            0.1,  // Радиус
+            0.9   // Порог (светиться будет только самое яркое)
         );
         composer = new EffectComposer(renderer);
         composer.addPass(renderScene);
         composer.addPass(bloomPass);
 
-        // 3. Preload Textures
+        // 2. Preload Textures
         await preloadTextures();
         console.log("Textures loaded");
 
-        // 4. Create Objects
+        // 3. Create Objects
         createImageCircle();
         createCenterImages();
         createStarField();
         createArcLabels();
         console.log("Objects created");
 
-        // 5. Initial Camera Position
+        // 4. Initial Camera Position
         setCameraToImage(0);
         updateVisibility(0);
         
-        // Рендерим первый кадр сразу
         renderer.render(scene, camera);
         composer.render();
 
-        // 8. Event Listeners
+        // 5. Event Listeners
         window.addEventListener('resize', onWindowResize);
         document.getElementById('start-screen').addEventListener('click', startExperience, { once: true });
         
@@ -152,7 +215,7 @@ function createImageCircle() {
     const geometry = new THREE.PlaneGeometry(IMAGE_SIZE, IMAGE_SIZE);
 
     for (let i = 0; i < TOTAL_IMAGES; i++) {
-        const angle = (i / TOTAL_IMAGES) * Math.PI * 2;
+        const angle = (i / TOTAL_IMAGES) * Math.PI * 2 - Math.PI / 2; // Смещение на полночь
         const x = Math.cos(angle) * R;
         const z = Math.sin(angle) * R;
 
@@ -163,16 +226,16 @@ function createImageCircle() {
                 uSeed: { value: Math.random() * 100 },
                 uIntensity: { value: 1.0 }
             },
-            vertexShader: shaders.vert,
-            fragmentShader: shaders.frag,
+            vertexShader: VERT_SHADER,
+            fragmentShader: FRAG_SHADER,
             transparent: true,
             depthWrite: false, // Исправляет артефакты наложения
-            side: THREE.FrontSide
+            side: THREE.DoubleSide
         });
 
         const plane = new THREE.Mesh(geometry, material);
         plane.position.set(x, 0, z);
-        plane.lookAt(0, 0, 0);
+        plane.rotation.x = -Math.PI / 2; // Лежат плашмя
         
         scene.add(plane);
         imagePlanes.push(plane);
@@ -190,14 +253,15 @@ function createCenterImages() {
             uSeed: { value: Math.random() * 100 },
             uIntensity: { value: 0.0 }
         },
-        vertexShader: shaders.vert,
-        fragmentShader: shaders.frag,
+        vertexShader: VERT_SHADER,
+        fragmentShader: FRAG_SHADER,
         transparent: true,
         depthWrite: false,
-        side: THREE.FrontSide
+        side: THREE.DoubleSide
     });
     centerPlane = new THREE.Mesh(centerGeo, centerMat);
     centerPlane.position.set(0, 0, 0);
+    centerPlane.rotation.x = -Math.PI / 2;
     scene.add(centerPlane);
 
     // img_55.png (Overlay for img_54)
@@ -209,14 +273,14 @@ function createCenterImages() {
             uSeed: { value: Math.random() * 100 },
             uIntensity: { value: 0.0 }
         },
-        vertexShader: shaders.vert,
-        fragmentShader: shaders.frag,
+        vertexShader: VERT_SHADER,
+        fragmentShader: FRAG_SHADER,
         transparent: true,
         depthWrite: false,
-        side: THREE.FrontSide
+        side: THREE.DoubleSide
     });
     finalPlane = new THREE.Mesh(finalGeo, finalMat);
-    // Position will be set when needed (at img_54's position)
+    finalPlane.rotation.x = -Math.PI / 2;
     scene.add(finalPlane);
 }
 
@@ -296,6 +360,37 @@ function startExperience() {
     document.getElementById('start-screen').style.opacity = '0';
     setTimeout(() => document.getElementById('start-screen').remove(), 1000);
     
+    // Показываем подсказку по камере
+    document.getElementById('camera-hint').style.display = 'block';
+    
+    // При старте принудительно включаем кинематографический режим
+    isFreeCamera = false;
+    controls.enabled = false;
+    setCameraToImage(0);
+    updateVisibility(0);
+    
+    console.log("Starting cinematic experience. Press 'C' to toggle free camera.");
+    
+    window.addEventListener('keydown', (e) => {
+        if (e.key.toLowerCase() === 'c') {
+            isFreeCamera = !isFreeCamera;
+            controls.enabled = isFreeCamera;
+            
+            const hint = document.getElementById('camera-hint');
+            if (isFreeCamera) {
+                hint.textContent = "Клавиша 'C' — режим притчи";
+                hint.style.color = "rgba(255, 100, 100, 0.5)";
+            } else {
+                hint.textContent = "Клавиша 'C' — свободная камера";
+                hint.style.color = "rgba(255, 255, 255, 0.3)";
+                // Возвращаем камеру на позицию текущей картинки
+                setCameraToImage(currentImageIndex);
+                updateVisibility(currentImageIndex);
+            }
+            console.log("Camera mode:", isFreeCamera ? "FREE" : "CINEMATIC");
+        }
+    });
+
     audio.play().catch(err => {
         console.error("Audio playback failed. Please ensure assets/audio/narration.mp3 exists.", err);
         // Fallback: start a manual timer if audio fails
@@ -308,7 +403,7 @@ function startExperience() {
 }
 
 function onAudioTimeUpdate(e) {
-    if (isFinalSequence) return;
+    if (isFinalSequence || isFreeCamera) return;
     
     const t = e.target ? e.target.currentTime : audio.currentTime;
     
@@ -331,66 +426,74 @@ function onAudioTimeUpdate(e) {
 }
 
 function setCameraToImage(index) {
-    const angle = (index / TOTAL_IMAGES) * Math.PI * 2;
+    const angle = (index / TOTAL_IMAGES) * Math.PI * 2 - Math.PI / 2;
     const dist = R - CAMERA_OFFSET;
-    camera.position.set(
+    camBasePos.set(
         Math.cos(angle) * dist,
-        CAMERA_HEIGHT, // Поднимаем камеру
+        CAMERA_HEIGHT,
         Math.sin(angle) * dist
     );
-    camera.lookAt(imagePlanes[index].position);
+    camera.position.copy(camBasePos);
+    
+    // Фиксируем взгляд строго вниз
+    camera.rotation.set(-Math.PI / 2, 0, angle + Math.PI / 2); 
 }
 
 function transitionToImage(targetIndex, duration) {
-    const targetPlane = imagePlanes[targetIndex];
-    
     // Текущий угол камеры
-    const currentAngle = Math.atan2(camera.position.z, camera.position.x);
+    const currentAngle = Math.atan2(camBasePos.z, camBasePos.x);
     // Целевой угол
-    let targetAngle = (targetIndex / TOTAL_IMAGES) * Math.PI * 2;
+    let targetAngle = (targetIndex / TOTAL_IMAGES) * Math.PI * 2 - Math.PI / 2;
     
-    // Выбираем кратчайший путь по кругу
+    // Кратчайший путь
     while (targetAngle - currentAngle > Math.PI) targetAngle -= Math.PI * 2;
     while (targetAngle - currentAngle < -Math.PI) targetAngle += Math.PI * 2;
 
     const animObj = { 
         angle: currentAngle, 
-        distance: R - CAMERA_OFFSET, 
         height: CAMERA_HEIGHT 
     };
     
     const tl = gsap.timeline();
     
-    // Единое движение: полет по дуге с набором высоты и отдалением в середине
+    // Движение строго по дуге над окружностью
     tl.to(animObj, {
         angle: targetAngle,
-        distance: (R - CAMERA_OFFSET) * 1.5, // Отдаляемся к центру
-        height: CAMERA_HEIGHT * 2,           // Взлетаем выше
+        height: CAMERA_HEIGHT * 1.8, // Поднимаемся в полете
         duration: duration * 0.5,
-        ease: "power2.in",
+        ease: "power2.inOut",
         onUpdate: () => {
-            camera.position.x = Math.cos(animObj.angle) * animObj.distance;
-            camera.position.y = animObj.height;
-            camera.position.z = Math.sin(animObj.angle) * animObj.distance;
-            camera.lookAt(targetPlane.position);
+            updateCameraFromAnim(animObj);
         }
     });
     
     tl.to(animObj, {
-        distance: R - CAMERA_OFFSET,
         height: CAMERA_HEIGHT,
         duration: duration * 0.5,
-        ease: "power2.out",
+        ease: "power2.inOut",
         onUpdate: () => {
-            camera.position.x = Math.cos(animObj.angle) * animObj.distance;
-            camera.position.y = animObj.height;
-            camera.position.z = Math.sin(animObj.angle) * animObj.distance;
-            camera.lookAt(targetPlane.position);
+            updateCameraFromAnim(animObj);
         }
     });
 }
 
+function updateCameraFromAnim(animObj) {
+    const dist = R - CAMERA_OFFSET;
+    camBasePos.x = Math.cos(animObj.angle) * dist;
+    camBasePos.y = animObj.height;
+    camBasePos.z = Math.sin(animObj.angle) * dist;
+    
+    camera.position.copy(camBasePos);
+    // Камера всегда смотрит вертикально вниз. 
+    // rotation.z меняется вместе с углом, чтобы "верх" камеры всегда был направлен к центру или от него (по вашему желанию)
+    camera.rotation.set(-Math.PI / 2, 0, animObj.angle + Math.PI / 2);
+}
+
 function updateVisibility(currentIndex) {
+    if (isFreeCamera) {
+        imagePlanes.forEach(plane => plane.visible = true);
+        return;
+    }
     imagePlanes.forEach((plane, i) => {
         const dist = Math.min(
             Math.abs(i - currentIndex),
@@ -492,11 +595,14 @@ function animate(time) {
     centerPlane.material.uniforms.uTime.value = t;
     finalPlane.material.uniforms.uTime.value = t;
     
-    // Breathing
-    if (!isFinalSequence) {
-        const breathe = Math.sin(t * 0.8) * 8;
-        camera.position.y += breathe * 0.016;
-        camera.position.x += Math.sin(t * 0.5) * 0.01;
+    // Controls
+    if (isFreeCamera) {
+        controls.update();
+    } else if (!isFinalSequence) {
+        // Breathing
+        camera.position.y = camBasePos.y + Math.sin(t * 0.8) * 8;
+        camera.position.x = camBasePos.x + Math.sin(t * 0.5) * 5;
+        camera.position.z = camBasePos.z + Math.cos(t * 0.5) * 5;
     }
     
     composer.render();
