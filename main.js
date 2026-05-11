@@ -141,7 +141,6 @@ let scene, camera, renderer, labelRenderer, composer, controls;
 let imagePlanes = [];
 let centerPlane, finalPlane, rewindPlane; // img_0, img_55 and rewind plane
 let starField;
-let arcLabels = [];
 let audio, midi;
 let finalTimeline;
 let isManualNavigation = false;
@@ -205,7 +204,6 @@ async function init() {
         createImageCircle();
         createCenterImages();
         createStarField();
-        createArcLabels();
         console.log("Objects created");
 
         // 4. Initial Camera Position
@@ -387,74 +385,6 @@ function createStarField() {
     
     starField = new THREE.Points(geometry, material);
     scene.add(starField);
-}
-
-function createArcLabels() {
-    const labels = [
-        "ARC I — ДЕТСТВО И ПЕРВЫЕ ВОПРОСЫ",
-        "ARC II — ВЗРОСЛЕНИЕ И ТЕСТИРОВАНИЕ",
-        "ARC III — МИР ЛЮДЕЙ И ДИСТАНЦИЯ",
-        "ARC IV — ПОТЕРИ И НАБЛЮДЕНИЕ",
-        "ARC V — ОСОЗНАНИЕ И СОЗДАНИЕ",
-        "ARC VI — ВЕЧНОЕ ВОЗВРАЩЕНИЕ"
-    ];
-    
-    const labelRadius = 11000;
-    
-    labels.forEach((text, i) => {
-        const startAngle = (i / labels.length) * Math.PI * 2 - Math.PI / 2;
-        
-        const div = document.createElement('div');
-        div.style.pointerEvents = 'none';
-        div.style.color = 'white';
-        div.style.fontFamily = "'Courier New', monospace";
-        div.style.fontSize = "32px"; 
-        div.style.fontWeight = "bold";
-        div.style.textTransform = "uppercase";
-        div.style.letterSpacing = "8px";
-        div.style.whiteSpace = "nowrap";
-        div.style.opacity = "0"; // Начинаем с 0
-        div.style.textShadow = "0 0 10px rgba(0,0,0,1), 0 0 20px rgba(0,0,0,1)";
-
-        const svgNS = "http://www.w3.org/2000/svg";
-        const svg = document.createElementNS(svgNS, "svg");
-        const w = 1600;
-        const h = 300;
-        svg.setAttribute("width", w);
-        svg.setAttribute("height", h);
-        svg.style.overflow = "visible";
-
-        const arcId = `arcPathFinal${i}`;
-        const path = document.createElementNS(svgNS, "path");
-        path.setAttribute("id", arcId);
-        path.setAttribute("fill", "none");
-        
-        // Рисуем дугу (выгнута вверх для читаемости)
-        path.setAttribute("d", `M 0,200 Q ${w/2},0 ${w},200`);
-        
-        const textNode = document.createElementNS(svgNS, "text");
-        textNode.setAttribute("fill", "white");
-        const textPath = document.createElementNS(svgNS, "textPath");
-        textPath.setAttributeNS(null, "href", `#${arcId}`);
-        textPath.setAttribute("startOffset", "50%");
-        textPath.setAttribute("text-anchor", "middle");
-        textPath.textContent = text;
-
-        textNode.appendChild(textPath);
-        svg.appendChild(path);
-        svg.appendChild(textNode);
-        div.appendChild(svg);
-        
-        const label = new CSS2DObject(div);
-        label.position.set(
-            Math.cos(startAngle) * labelRadius,
-            800, // Чуть выше над плоскостью
-            Math.sin(startAngle) * labelRadius
-        );
-        
-        scene.add(label);
-        arcLabels.push(label); // Сохраняем CSS2DObject
-    });
 }
 
 // --- LOGIC ---
@@ -737,13 +667,6 @@ function startFinalSequence(skipInitial = false) {
     gsap.killTweensOf(starField.material);
     gsap.killTweensOf(rewindPlane.material);
     
-    // Сброс надписей
-    arcLabels.forEach(label => {
-        gsap.killTweensOf(label.element.style);
-        label.element.style.opacity = "0";
-        label.visible = false;
-    });
-    
     // Удаление старой точки если есть
     const oldDot = scene.getObjectByName("redDot");
     if (oldDot) scene.remove(oldDot);
@@ -805,12 +728,6 @@ function startFinalSequence(skipInitial = false) {
         
         gsap.to(starField.material, { opacity: 1, duration: 12, delay: 2 });
         gsap.to(centerPlane.material.uniforms.uIntensity, { value: 1.0, duration: 10, delay: 5 });
-        
-        // Проявление названий арок (CSS2D элементы)
-        arcLabels.forEach((label, i) => {
-            label.visible = true;
-            gsap.to(label.element.style, { opacity: "0.8", duration: 4, delay: 6 + i * 0.4 });
-        });
     });
 
     // 4. Финал: Приближение к красной точке и ОБРАТНАЯ ПЕРЕМОТКА
@@ -819,14 +736,7 @@ function startFinalSequence(skipInitial = false) {
         
         // Прячем всё
         gsap.to(centerPlane.material.uniforms.uIntensity, { value: 0, duration: 6 });
-        arcLabels.forEach(label => {
-            gsap.to(label.element.style, { 
-                opacity: "0", 
-                duration: 3,
-                onComplete: () => { label.visible = false; }
-            });
-        });
-
+        
         // Красная точка (создаем и сразу запускаем пульсацию)
         const dotGeo = new THREE.SphereGeometry(15, 32, 32);
         const dotMat = new THREE.MeshBasicMaterial({ color: 0xCC2200, transparent: true, opacity: 0 });
