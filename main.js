@@ -168,6 +168,7 @@ let textures = [];
 let currentSubtitle = "";
 let activeFloatingWords = [];
 let floatingTimeouts = [];
+let isNavHintShown = false;
 
 // Настройки специальных слайдов (фреймворк для эффектов)
 // Используется для запуска специфических визуальных эффектов на определенных слайдах.
@@ -531,7 +532,12 @@ async function init() {
         // 7. Start Loop
         animate();
 
-        document.getElementById('loader').textContent = 'готово';
+        // Показываем кнопку "Начать" после полной загрузки
+        const loaderDiv = document.getElementById('loader');
+        const startLabel = document.getElementById('start-label');
+        loaderDiv.style.display = 'none';
+        startLabel.style.display = 'block';
+        
         console.log("Initialization complete");
     } catch (error) {
         console.error("Initialization failed:", error);
@@ -912,6 +918,13 @@ function handleKeyDown(e) {
 
     // Переключение таймингов стрелками
     if (!isFreeCamera) {
+        if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+            // Если пользователь уже начал навигацию сам, скрываем подсказку или не показываем её вовсе
+            isNavHintShown = true;
+            const navHint = document.getElementById('nav-hint');
+            if (navHint) navHint.style.opacity = '0';
+        }
+
         if (e.key === 'ArrowRight') {
             console.log("ArrowRight pressed. Current index:", currentImageIndex);
             interruptIntro();
@@ -983,6 +996,11 @@ function onAudioTimeUpdate(e) {
     if (newIndex !== -1 && newIndex !== currentImageIndex) {
         const oldIndex = currentImageIndex;
         currentImageIndex = newIndex;
+
+        // Показываем подсказку о навигации на 3-м слайде (индекс 2)
+        if (currentImageIndex === 2 && !isNavHintShown) {
+            showNavHint();
+        }
         
         // Очистка при смене слайда (автоматической)
         clearFloatingWords();
@@ -1211,6 +1229,20 @@ function clearFloatingWords() {
         word.remove();
     });
     activeFloatingWords = [];
+}
+
+function showNavHint() {
+    isNavHintShown = true;
+    const navHint = document.getElementById('nav-hint');
+    if (!navHint) return;
+
+    // Плавно показываем
+    navHint.style.opacity = '1';
+
+    // Через 15 секунд плавно скрываем
+    setTimeout(() => {
+        navHint.style.opacity = '0';
+    }, 15000);
 }
 
 function setCameraToImage(index) {

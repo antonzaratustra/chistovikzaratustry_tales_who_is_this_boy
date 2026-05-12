@@ -35,6 +35,7 @@
             font-size: 13px;
             letter-spacing: 6px;
             text-transform: uppercase;
+            display: none; /* Скрыто до окончания загрузки */
         }
         #fade-overlay {
             position: fixed;
@@ -45,14 +46,40 @@
             z-index: 2000;
         }
         #loader {
+            position: absolute;
+            color: rgba(255,255,255,0.4);
+            font-size: 13px;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            text-align: center;
+        }
+        #nav-hint {
             position: fixed;
-            bottom: 20px;
+            bottom: 5%;
             left: 50%;
             transform: translateX(-50%);
-            color: rgba(255,255,255,0.2);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            color: rgba(255, 255, 255, 0.3);
             font-size: 10px;
             letter-spacing: 2px;
             text-transform: uppercase;
+            pointer-events: none;
+            z-index: 500;
+            opacity: 0;
+            transition: opacity 1.5s ease;
+        }
+        .nav-keys {
+            display: flex;
+            gap: 20px;
+            font-size: 24px;
+        }
+        .nav-key {
+            padding: 5px 15px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
         }
         #subtitle-container {
             position: fixed;
@@ -122,6 +149,14 @@
     <div id="start-screen">
         <div id="start-label">нажмите, чтобы начать</div>
         <div id="loader">загрузка ресурсов...</div>
+    </div>
+
+    <div id="nav-hint">
+        <div class="nav-keys">
+            <div class="nav-key">←</div>
+            <div class="nav-key">→</div>
+        </div>
+        <div>используйте стрелки для навигации</div>
     </div>
 
     <div id="main-title">
